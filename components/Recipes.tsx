@@ -132,9 +132,7 @@ export default function Recipes() {
 
     setRecipes((recipesResult.data ?? []) as Recipe[]);
     setProducts((productsResult.data ?? []) as Product[]);
-    setIngredients(
-      (ingredientsResult.data ?? []) as RecipeIngredient[]
-    );
+    setIngredients((ingredientsResult.data ?? []) as RecipeIngredient[]);
 
     setLoading(false);
   }
@@ -372,7 +370,7 @@ export default function Recipes() {
       return;
     }
 
-    // Jednostka zawsze pobierana bezpośrednio z produktu.
+    // Jednostka zawsze pochodzi z produktu.
     const unit = product.unit;
 
     setSavingIngredient(true);
@@ -545,56 +543,85 @@ export default function Recipes() {
   }
 
   /**
-   * Przelicza ilość składnika do jednostki produktu.
-   *
-   * Przykłady:
-   * 500 g mąki z opakowania 1 kg = 0,5 kg
-   * 0,5 kg mąki z opakowania 1 kg = 0,5 kg
-   * 20 g proszku z opakowania 40 g = 0,5 opakowania
-   * 3 szt jaj z opakowania 10 szt = 0,3 opakowania
+   * Normalizuje jednostki do prostego formatu.
    */
-  function normalizeQuantityToProductUnit(
-    quantity: number,
-    ingredientUnit: string,
-    productUnit: string
-  ) {
-    const from = ingredientUnit
+  function normalizeUnit(unit: string | null | undefined) {
+    return (unit ?? "")
       .trim()
-      .toLowerCase();
+      .toLowerCase()
+      .replace(" ", "");
+  }
 
-    const to = productUnit
-      .trim()
-      .toLowerCase();
+  /**
+   * Przelicza ilość między jednostkami.
+   *
+   * Obsługiwane:
+   * kg <-> g
+   * l  <-> ml
+   * szt <-> szt
+   */
+  function convertQuantity(
+    quantity: number,
+    fromUnit: string,
+    toUnit: string
+  ) {
+    const from = normalizeUnit(fromUnit);
+    const to = normalizeUnit(toUnit);
 
     if (from === to) {
       return quantity;
     }
 
-    // g -> kg
-    if (from === "g" && to === "kg") {
-      return quantity / 1000;
-    }
-
-    // kg -> g
+    // kilogramy -> gramy
     if (from === "kg" && to === "g") {
       return quantity * 1000;
     }
 
-    // ml -> l
-    if (from === "ml" && to === "l") {
+    // gramy -> kilogramy
+    if (from === "g" && to === "kg") {
       return quantity / 1000;
     }
 
-    // l -> ml
+    // litry -> mililitry
     if (from === "l" && to === "ml") {
       return quantity * 1000;
     }
 
-    // Jeżeli jednostki są inne i nie mamy
-    // bezpiecznej konwersji, pozostawiamy ilość.
+    // mililitry -> litry
+    if (from === "ml" && to === "l") {
+      return quantity / 1000;
+    }
+
+    // sztuki
+    if (
+      (from === "szt" ||
+        from === "szt." ||
+        from === "sztuki") &&
+      (to === "szt" ||
+        to === "szt." ||
+        to === "sztuki")
+    ) {
+      return quantity;
+    }
+
+    // Jeśli jednostki są różne i nie znamy
+    // przelicznika, nie przeliczamy.
     return quantity;
   }
 
+  /**
+   * Oblicza koszt pojedynczego składnika.
+   *
+   * Przykład:
+   *
+   * Produkt:
+   * 1 kg mąki = 5 zł
+   *
+   * Receptura:
+   * 500 g
+   *
+   * 500 g / 1000 g * 5 zł = 2,50 zł
+   */
   function calculateIngredientCost(
     ingredient: RecipeIngredient
   ) {
@@ -606,26 +633,58 @@ export default function Recipes() {
       return 0;
     }
 
+    const packageQuantity = Number(
+      product.package_quantity
+    );
+
+    const packagePrice = Number(
+      product.package_price
+    );
+
+    const ingredientQuantity = Number(
+      ingredient.quantity
+    );
+
     if (
-      !product.package_quantity ||
-      product.package_quantity <= 0 ||
-      product.package_price === null ||
-      product.package_price === undefined
+      !Number.isFinite(packageQuantity) ||
+      packageQuantity <= 0 ||
+      !Number.isFinite(packagePrice) ||
+      packagePrice < 0 ||
+      !Number.isFinite(ingredientQuantity) ||
+      ingredientQuantity <= 0
     ) {
       return 0;
     }
 
-    const normalizedQuantity =
-      normalizeQuantityToProductUnit(
-        ingredient.quantity,
-        ingredient.unit,
-        product.unit
-      );
+    /**
+     * Bardzo ważne:
+     *
+     * package_quantity jest podane w jednostce produktu.
+     *
+     * np.
+     * mąka:
+     * package_quantity = 1
+     * unit = kg
+     *
+     * składnik:
+     * quantity = 500
+     * unit = g
+     *
+     * Najpierw zamieniamy 500 g na kg:
+     * 500 g = 0,5 kg
+     *
+     * następnie:
+     * 0,5 / 1 * 5 zł = 2,50 zł
+     */
+    const convertedQuantity = convertQuantity(
+      ingredientQuantity,
+      ingredient.unit,
+      product.unit
+    );
 
     return (
-      (normalizedQuantity /
-        product.package_quantity) *
-      Number(product.package_price)
+      (convertedQuantity / packageQuantity) *
+      packagePrice
     );
   }
 
@@ -1034,7 +1093,7 @@ export default function Recipes() {
                           event.target.value
                         )
                       }
-                      placeholder="np. 0,5"
+                      placeholder="np. 500"
                       disabled={savingIngredient}
                       style={inputStyle}
                     />
@@ -1052,21 +1111,12 @@ export default function Recipes() {
                       value={ingredientForm.unit}
                       readOnly
                       placeholder="Automatycznie"
-                      disabled={
-                        savingIngredient ||
-                        !ingredientForm.productId
-                      }
+                      disabled={savingIngredient}
                       style={{
                         ...inputStyle,
-                        background:
-                          ingredientForm.productId
-                            ? "#f7f3ef"
-                            : "#ffffff",
-                        color:
-                          ingredientForm.productId
-                            ? "#514b46"
-                            : "#9a928b",
-                        cursor: "default",
+                        background: "#f7f4f1",
+                        color: "#716b65",
+                        cursor: "not-allowed",
                       }}
                     />
                   </label>
@@ -1151,7 +1201,50 @@ export default function Recipes() {
                                   ingredient.quantity
                                 )}{" "}
                                 {ingredient.unit}
+
+                                {product &&
+                                  normalizeUnit(
+                                    ingredient.unit
+                                  ) !==
+                                    normalizeUnit(
+                                      product.unit
+                                    ) && (
+                                    <>
+                                      {" "}
+                                      (
+                                      {formatNumber(
+                                        convertQuantity(
+                                          ingredient.quantity,
+                                          ingredient.unit,
+                                          product.unit
+                                        )
+                                      )}{" "}
+                                      {
+                                        product.unit
+                                      }
+                                      )
+                                    </>
+                                  )}
                               </div>
+
+                              {product && (
+                                <div
+                                  style={
+                                    ingredientPackageStyle
+                                  }
+                                >
+                                  Opakowanie:{" "}
+                                  {formatNumber(
+                                    product.package_quantity
+                                  )}{" "}
+                                  {product.unit} •{" "}
+                                  {formatMoney(
+                                    Number(
+                                      product.package_price
+                                    )
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -1784,6 +1877,12 @@ const ingredientMetaStyle = {
   marginTop: "3px",
   color: "#8a837d",
   fontSize: "12px",
+};
+
+const ingredientPackageStyle = {
+  marginTop: "3px",
+  color: "#aaa19a",
+  fontSize: "10px",
 };
 
 const ingredientRightStyle = {
