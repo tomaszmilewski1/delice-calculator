@@ -1,24 +1,99 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function Home() {
-  const [loggedIn, setLoggedIn] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  function handleLogin(e: React.FormEvent) {
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkSession() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (mounted) {
+        setLoggedIn(!!session);
+        setLoading(false);
+      }
+    }
+
+    checkSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setLoggedIn(!!session);
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
 
-    if (email.trim() && password.trim()) {
-      setLoggedIn(true);
+    setError("");
+    setLoggingIn(true);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (error) {
+      setError(
+        "Nieprawidłowy e-mail lub hasło."
+      );
+      setLoggingIn(false);
+      return;
     }
+
+    setPassword("");
+    setLoggingIn(false);
   }
 
-  function logout() {
+  async function logout() {
+    await supabase.auth.signOut();
+
     setLoggedIn(false);
     setEmail("");
     setPassword("");
+  }
+
+  if (loading) {
+    return (
+      <main style={pageStyle}>
+        <div style={loadingBoxStyle}>
+          <div style={brandStyle}>Délice</div>
+
+          <h1
+            style={{
+              fontSize: "30px",
+              margin: 0,
+            }}
+          >
+            Kalkulator tortów
+          </h1>
+
+          <p style={mutedStyle}>
+            Ładowanie panelu...
+          </p>
+        </div>
+      </main>
+    );
   }
 
   if (!loggedIn) {
@@ -57,9 +132,12 @@ export default function Home() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) =>
+                  setEmail(e.target.value)
+                }
                 placeholder="Wpisz adres e-mail"
                 required
+                autoComplete="email"
                 style={inputStyle}
               />
             </label>
@@ -72,18 +150,36 @@ export default function Home() {
               <input
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) =>
+                  setPassword(e.target.value)
+                }
                 placeholder="Wpisz hasło"
                 required
+                autoComplete="current-password"
                 style={inputStyle}
               />
             </label>
 
+            {error && (
+              <div style={errorStyle}>
+                {error}
+              </div>
+            )}
+
             <button
               type="submit"
-              style={primaryButtonStyle}
+              disabled={loggingIn}
+              style={{
+                ...primaryButtonStyle,
+                opacity: loggingIn ? 0.7 : 1,
+                cursor: loggingIn
+                  ? "wait"
+                  : "pointer",
+              }}
             >
-              Zaloguj się
+              {loggingIn
+                ? "Logowanie..."
+                : "Zaloguj się"}
             </button>
           </form>
 
@@ -124,7 +220,8 @@ export default function Home() {
             margin: "0 0 30px",
           }}
         >
-          Zalogowano pomyślnie. Panel kalkulatora jest gotowy.
+          Zalogowano pomyślnie. Panel kalkulatora
+          jest gotowy.
         </p>
 
         <button
@@ -170,7 +267,19 @@ const loginBoxStyle = {
   borderRadius: "20px",
   padding: "35px",
   boxSizing: "border-box" as const,
-  boxShadow: "0 10px 30px rgba(0,0,0,0.05)",
+  boxShadow:
+    "0 10px 30px rgba(0,0,0,0.05)",
+};
+
+const loadingBoxStyle = {
+  width: "100%",
+  maxWidth: "500px",
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "20px",
+  padding: "40px",
+  boxSizing: "border-box" as const,
+  textAlign: "center" as const,
 };
 
 const successBoxStyle = {
@@ -181,7 +290,8 @@ const successBoxStyle = {
   borderRadius: "20px",
   padding: "45px",
   boxSizing: "border-box" as const,
-  boxShadow: "0 10px 30px rgba(0,0,0,0.05)",
+  boxShadow:
+    "0 10px 30px rgba(0,0,0,0.05)",
   textAlign: "center" as const,
 };
 
@@ -231,7 +341,6 @@ const primaryButtonStyle = {
   color: "#ffffff",
   fontSize: "15px",
   fontWeight: 600,
-  cursor: "pointer",
 };
 
 const logoutButtonStyle = {
@@ -243,4 +352,14 @@ const logoutButtonStyle = {
   cursor: "pointer",
   fontSize: "14px",
   fontWeight: 600,
+};
+
+const errorStyle = {
+  background: "#fff3f1",
+  border: "1px solid #e7c5bf",
+  color: "#9b4d43",
+  borderRadius: "9px",
+  padding: "11px 12px",
+  marginBottom: "16px",
+  fontSize: "14px",
 };
