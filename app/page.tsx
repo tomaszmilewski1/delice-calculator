@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Products from "./components/Products";
-
+import Products from "../components/Products";
 type Ingredient = {
   id: number;
   name: string;
