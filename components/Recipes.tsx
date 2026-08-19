@@ -80,9 +80,8 @@ export default function Recipes() {
     useState<IngredientForm>(emptyIngredientForm);
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(
-    null
-  );
+  const [selectedRecipeId, setSelectedRecipeId] =
+    useState<string | null>(null);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -97,12 +96,16 @@ export default function Recipes() {
 
     const [recipesResult, productsResult, ingredientsResult] =
       await Promise.all([
-        supabase.from("recipes").select("*").order("name", {
-          ascending: true,
-        }),
-        supabase.from("products").select("*").order("name", {
-          ascending: true,
-        }),
+        supabase
+          .from("recipes")
+          .select("*")
+          .order("name", { ascending: true }),
+
+        supabase
+          .from("products")
+          .select("*")
+          .order("name", { ascending: true }),
+
         supabase
           .from("recipe_ingredients")
           .select("*")
@@ -129,12 +132,17 @@ export default function Recipes() {
 
     setRecipes((recipesResult.data ?? []) as Recipe[]);
     setProducts((productsResult.data ?? []) as Product[]);
-    setIngredients((ingredientsResult.data ?? []) as RecipeIngredient[]);
+    setIngredients(
+      (ingredientsResult.data ?? []) as RecipeIngredient[]
+    );
 
     setLoading(false);
   }
 
-  function updateForm(field: keyof RecipeForm, value: string | boolean) {
+  function updateForm(
+    field: keyof RecipeForm,
+    value: string | boolean
+  ) {
     setForm((current) => ({
       ...current,
       [field]: value,
@@ -151,10 +159,7 @@ export default function Recipes() {
     }));
   }
 
-  function startEditing(recipe: Recipe) {
-    setEditingId(recipe.id);
-    setSelectedRecipeId(recipe.id);
-
+  function fillRecipeForm(recipe: Recipe) {
     setForm({
       name: recipe.name ?? "",
       description: recipe.description ?? "",
@@ -173,6 +178,13 @@ export default function Recipes() {
           : "",
       active: recipe.active,
     });
+  }
+
+  function startEditing(recipe: Recipe) {
+    setEditingId(recipe.id);
+    setSelectedRecipeId(recipe.id);
+
+    fillRecipeForm(recipe);
 
     setIngredientForm(emptyIngredientForm);
     setError("");
@@ -197,7 +209,9 @@ export default function Recipes() {
     startNewRecipe();
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     setError("");
@@ -227,7 +241,8 @@ export default function Recipes() {
 
     if (
       portionsValue !== null &&
-      (!Number.isFinite(portionsValue) || portionsValue <= 0)
+      (!Number.isFinite(portionsValue) ||
+        portionsValue <= 0)
     ) {
       setError("Liczba porcji musi być większa od 0.");
       return;
@@ -235,7 +250,8 @@ export default function Recipes() {
 
     if (
       diameterValue !== null &&
-      (!Number.isFinite(diameterValue) || diameterValue <= 0)
+      (!Number.isFinite(diameterValue) ||
+        diameterValue <= 0)
     ) {
       setError("Średnica musi być większa od 0.");
       return;
@@ -243,7 +259,8 @@ export default function Recipes() {
 
     if (
       heightValue !== null &&
-      (!Number.isFinite(heightValue) || heightValue <= 0)
+      (!Number.isFinite(heightValue) ||
+        heightValue <= 0)
     ) {
       setError("Wysokość musi być większa od 0.");
       return;
@@ -294,20 +311,26 @@ export default function Recipes() {
 
       setEditingId(data.id);
       setSelectedRecipeId(data.id);
+
       setSuccess(
         "Receptura została dodana. Możesz teraz dodać składniki."
       );
     }
 
     await loadData();
+
     setSaving(false);
   }
 
-  async function addIngredient(event: FormEvent<HTMLFormElement>) {
+  async function addIngredient(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     if (!selectedRecipeId) {
-      setError("Najpierw wybierz lub zapisz recepturę.");
+      setError(
+        "Najpierw wybierz lub zapisz recepturę."
+      );
       return;
     }
 
@@ -337,7 +360,8 @@ export default function Recipes() {
       return;
     }
 
-    const unit = ingredientForm.unit.trim() || product.unit;
+    const unit =
+      ingredientForm.unit.trim() || product.unit;
 
     setSavingIngredient(true);
 
@@ -359,14 +383,19 @@ export default function Recipes() {
     }
 
     setIngredientForm(emptyIngredientForm);
-    setSuccess(`Dodano składnik: ${product.name}.`);
+
+    setSuccess(
+      `Dodano składnik: ${product.name}.`
+    );
 
     await loadData();
 
     setSavingIngredient(false);
   }
 
-  async function deleteIngredient(ingredient: RecipeIngredient) {
+  async function deleteIngredient(
+    ingredient: RecipeIngredient
+  ) {
     const product = products.find(
       (item) => item.id === ingredient.product_id
     );
@@ -397,6 +426,7 @@ export default function Recipes() {
     }
 
     setSuccess("Składnik został usunięty.");
+
     await loadData();
   }
 
@@ -412,10 +442,11 @@ export default function Recipes() {
     setError("");
     setSuccess("");
 
-    const { error: deleteIngredientsError } = await supabase
-      .from("recipe_ingredients")
-      .delete()
-      .eq("recipe_id", recipe.id);
+    const { error: deleteIngredientsError } =
+      await supabase
+        .from("recipe_ingredients")
+        .delete()
+        .eq("recipe_id", recipe.id);
 
     if (deleteIngredientsError) {
       setError(
@@ -424,10 +455,11 @@ export default function Recipes() {
       return;
     }
 
-    const { error: deleteRecipeError } = await supabase
-      .from("recipes")
-      .delete()
-      .eq("id", recipe.id);
+    const { error: deleteRecipeError } =
+      await supabase
+        .from("recipes")
+        .delete()
+        .eq("id", recipe.id);
 
     if (deleteRecipeError) {
       setError(
@@ -440,7 +472,9 @@ export default function Recipes() {
       startNewRecipe();
     }
 
-    setSuccess(`Receptura "${recipe.name}" została usunięta.`);
+    setSuccess(
+      `Receptura "${recipe.name}" została usunięta.`
+    );
 
     await loadData();
   }
@@ -485,35 +519,25 @@ export default function Recipes() {
     setSelectedRecipeId(recipe.id);
     setEditingId(recipe.id);
 
-    setForm({
-      name: recipe.name ?? "",
-      description: recipe.description ?? "",
-      category: recipe.category ?? "",
-      portions:
-        recipe.portions !== null
-          ? String(recipe.portions).replace(".", ",")
-          : "",
-      diameterCm:
-        recipe.diameter_cm !== null
-          ? String(recipe.diameter_cm).replace(".", ",")
-          : "",
-      heightCm:
-        recipe.height_cm !== null
-          ? String(recipe.height_cm).replace(".", ",")
-          : "",
-      active: recipe.active,
-    });
+    fillRecipeForm(recipe);
 
+    setIngredientForm(emptyIngredientForm);
     setError("");
     setSuccess("");
   }
 
   function getProduct(productId: string) {
-    return products.find((product) => product.id === productId);
+    return products.find(
+      (product) => product.id === productId
+    );
   }
 
-  function calculateIngredientCost(ingredient: RecipeIngredient) {
-    const product = getProduct(ingredient.product_id);
+  function calculateIngredientCost(
+    ingredient: RecipeIngredient
+  ) {
+    const product = getProduct(
+      ingredient.product_id
+    );
 
     if (!product) {
       return 0;
@@ -529,17 +553,22 @@ export default function Recipes() {
     }
 
     return (
-      (ingredient.quantity / product.package_quantity) *
+      (ingredient.quantity /
+        product.package_quantity) *
       product.package_price
     );
   }
 
   function calculateRecipeCost(recipeId: string) {
     return ingredients
-      .filter((ingredient) => ingredient.recipe_id === recipeId)
+      .filter(
+        (ingredient) =>
+          ingredient.recipe_id === recipeId
+      )
       .reduce(
         (sum, ingredient) =>
-          sum + calculateIngredientCost(ingredient),
+          sum +
+          calculateIngredientCost(ingredient),
         0
       );
   }
@@ -547,7 +576,8 @@ export default function Recipes() {
   const selectedRecipe = useMemo(
     () =>
       recipes.find(
-        (recipe) => recipe.id === selectedRecipeId
+        (recipe) =>
+          recipe.id === selectedRecipeId
       ) ?? null,
     [recipes, selectedRecipeId]
   );
@@ -555,7 +585,9 @@ export default function Recipes() {
   const selectedIngredients = useMemo(
     () =>
       ingredients.filter(
-        (ingredient) => ingredient.recipe_id === selectedRecipeId
+        (ingredient) =>
+          ingredient.recipe_id ===
+          selectedRecipeId
       ),
     [ingredients, selectedRecipeId]
   );
@@ -564,8 +596,13 @@ export default function Recipes() {
     ? calculateRecipeCost(selectedRecipe.id)
     : 0;
 
-  function formatNumber(value: number | null | undefined) {
-    if (value === null || value === undefined) {
+  function formatNumber(
+    value: number | null | undefined
+  ) {
+    if (
+      value === null ||
+      value === undefined
+    ) {
       return "—";
     }
 
@@ -575,28 +612,43 @@ export default function Recipes() {
   }
 
   function formatMoney(value: number) {
-    return `${value.toFixed(2).replace(".", ",")} zł`;
+    return `${value
+      .toFixed(2)
+      .replace(".", ",")} zł`;
   }
 
-  function getRecipePortionsLabel(portions: number | null) {
-    if (!portions) {
-      return "—";
+  function getRecipePortionsLabel(
+    portions: number | null
+  ) {
+    if (portions === null) {
+      return "Brak danych o porcjach";
     }
 
-    return `${formatNumber(portions)} porcji`;
+    return `${formatNumber(portions)} ${
+      portions === 1
+        ? "porcja"
+        : portions >= 2 &&
+          portions <= 4
+        ? "porcje"
+        : "porcji"
+    }`;
   }
 
   return (
     <section style={pageStyle}>
       <div style={headerStyle}>
         <div>
-          <div style={eyebrowStyle}>BAZA RECEPTUR</div>
+          <div style={eyebrowStyle}>
+            BAZA RECEPTUR
+          </div>
 
-          <h2 style={titleStyle}>Receptury</h2>
+          <h2 style={titleStyle}>
+            Receptury
+          </h2>
 
           <p style={subtitleStyle}>
-            Twórz receptury, wybieraj produkty z bazy i
-            automatycznie obliczaj koszt wykonania.
+            Twórz receptury, wybieraj produkty
+            z bazy i automatycznie wyliczaj koszt.
           </p>
         </div>
 
@@ -604,7 +656,8 @@ export default function Recipes() {
           {recipes.length}{" "}
           {recipes.length === 1
             ? "receptura"
-            : recipes.length >= 2 && recipes.length <= 4
+            : recipes.length >= 2 &&
+              recipes.length <= 4
             ? "receptury"
             : "receptur"}
         </div>
@@ -622,7 +675,9 @@ export default function Recipes() {
                 </h3>
 
                 <p style={cardSubtitleStyle}>
-                  Podstawowe informacje o recepturze.
+                  {editingId
+                    ? "Zmień dane receptury i zapisz zmiany."
+                    : "Najpierw utwórz recepturę, a następnie dodaj jej składniki."}
                 </p>
               </div>
 
@@ -632,7 +687,7 @@ export default function Recipes() {
                   onClick={cancelEditing}
                   style={cancelButtonStyle}
                 >
-                  Nowa
+                  Anuluj
                 </button>
               )}
             </div>
@@ -647,9 +702,12 @@ export default function Recipes() {
                   type="text"
                   value={form.name}
                   onChange={(event) =>
-                    updateForm("name", event.target.value)
+                    updateForm(
+                      "name",
+                      event.target.value
+                    )
                   }
-                  placeholder="np. Tort czekoladowy"
+                  placeholder="np. Krem śmietankowy"
                   disabled={saving}
                   style={inputStyle}
                 />
@@ -669,7 +727,7 @@ export default function Recipes() {
                       event.target.value
                     )
                   }
-                  placeholder="np. Torty"
+                  placeholder="np. Kremy"
                   disabled={saving}
                   style={inputStyle}
                 />
@@ -688,17 +746,17 @@ export default function Recipes() {
                       event.target.value
                     )
                   }
-                  placeholder="Opis receptury"
+                  placeholder="Krótki opis receptury"
                   disabled={saving}
                   rows={3}
                   style={textareaStyle}
                 />
               </label>
 
-              <div style={twoColumnStyle}>
+              <div style={threeColumnStyle}>
                 <label style={labelStyle}>
                   <span style={labelTextStyle}>
-                    Liczba porcji
+                    Porcje
                   </span>
 
                   <input
@@ -737,28 +795,28 @@ export default function Recipes() {
                     style={inputStyle}
                   />
                 </label>
+
+                <label style={labelStyle}>
+                  <span style={labelTextStyle}>
+                    Wysokość cm
+                  </span>
+
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={form.heightCm}
+                    onChange={(event) =>
+                      updateForm(
+                        "heightCm",
+                        event.target.value
+                      )
+                    }
+                    placeholder="np. 10"
+                    disabled={saving}
+                    style={inputStyle}
+                  />
+                </label>
               </div>
-
-              <label style={labelStyle}>
-                <span style={labelTextStyle}>
-                  Wysokość cm
-                </span>
-
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={form.heightCm}
-                  onChange={(event) =>
-                    updateForm(
-                      "heightCm",
-                      event.target.value
-                    )
-                  }
-                  placeholder="np. 10"
-                  disabled={saving}
-                  style={inputStyle}
-                />
-              </label>
 
               <label style={checkboxLabelStyle}>
                 <input
@@ -773,11 +831,15 @@ export default function Recipes() {
                   disabled={saving}
                 />
 
-                <span>Receptura aktywna</span>
+                <span>
+                  Receptura aktywna
+                </span>
               </label>
 
               {error && (
-                <div style={errorStyle}>{error}</div>
+                <div style={errorStyle}>
+                  {error}
+                </div>
               )}
 
               {success && (
@@ -820,54 +882,49 @@ export default function Recipes() {
                 </div>
 
                 <div style={costBadgeStyle}>
-                  Koszt: {formatMoney(selectedRecipeCost)}
+                  Koszt:{" "}
+                  <strong>
+                    {formatMoney(
+                      selectedRecipeCost
+                    )}
+                  </strong>
                 </div>
               </div>
 
-              <form onSubmit={addIngredient}>
-                <div style={ingredientGridStyle}>
+              <form
+                onSubmit={addIngredient}
+                style={ingredientFormStyle}
+              >
+                <div style={ingredientProductFieldStyle}>
                   <label style={labelStyle}>
                     <span style={labelTextStyle}>
                       Produkt
                     </span>
 
                     <select
-                      value={ingredientForm.productId}
-                      onChange={(event) => {
-                        const productId =
-                          event.target.value;
-
-                        const product =
-                          products.find(
-                            (item) =>
-                              item.id === productId
-                          );
-
+                      value={
+                        ingredientForm.productId
+                      }
+                      onChange={(event) =>
                         updateIngredientForm(
                           "productId",
-                          productId
-                        );
-
-                        if (product) {
-                          setIngredientForm(
-                            (current) => ({
-                              ...current,
-                              productId,
-                              unit: product.unit,
-                            })
-                          );
-                        }
-                      }}
-                      disabled={savingIngredient}
+                          event.target.value
+                        )
+                      }
+                      disabled={
+                        savingIngredient ||
+                        products.length === 0
+                      }
                       style={inputStyle}
                     >
                       <option value="">
-                        Wybierz produkt...
+                        Wybierz produkt z bazy...
                       </option>
 
                       {products
                         .filter(
-                          (product) => product.active
+                          (product) =>
+                            product.active
                         )
                         .map((product) => (
                           <option
@@ -875,12 +932,22 @@ export default function Recipes() {
                             value={product.id}
                           >
                             {product.name} —{" "}
+                            {formatMoney(
+                              Number(
+                                product.package_price
+                              )
+                            )} /{" "}
+                            {formatNumber(
+                              product.package_quantity
+                            )}{" "}
                             {product.unit}
                           </option>
                         ))}
                     </select>
                   </label>
+                </div>
 
+                <div style={ingredientQuantityFieldStyle}>
                   <label style={labelStyle}>
                     <span style={labelTextStyle}>
                       Ilość
@@ -889,7 +956,9 @@ export default function Recipes() {
                     <input
                       type="text"
                       inputMode="decimal"
-                      value={ingredientForm.quantity}
+                      value={
+                        ingredientForm.quantity
+                      }
                       onChange={(event) =>
                         updateIngredientForm(
                           "quantity",
@@ -901,7 +970,9 @@ export default function Recipes() {
                       style={inputStyle}
                     />
                   </label>
+                </div>
 
+                <div style={ingredientUnitFieldStyle}>
                   <label style={labelStyle}>
                     <span style={labelTextStyle}>
                       Jednostka
@@ -916,40 +987,36 @@ export default function Recipes() {
                           event.target.value
                         )
                       }
-                      placeholder="g"
+                      placeholder="automatycznie"
                       disabled={savingIngredient}
                       style={inputStyle}
                     />
                   </label>
+                </div>
 
-                  <div
+                <div style={ingredientButtonFieldStyle}>
+                  <button
+                    type="submit"
+                    disabled={savingIngredient}
                     style={{
-                      display: "flex",
-                      alignItems: "flex-end",
-                    }}
-                  >
-                    <button
-                      type="submit"
-                      disabled={savingIngredient}
-                      style={{
-                        ...smallAddButtonStyle,
-                        opacity: savingIngredient
+                      ...smallButtonStyle,
+                      opacity:
+                        savingIngredient
                           ? 0.7
                           : 1,
-                      }}
-                    >
-                      {savingIngredient
-                        ? "Dodawanie..."
-                        : "+ Dodaj"}
-                    </button>
-                  </div>
+                    }}
+                  >
+                    {savingIngredient
+                      ? "Dodawanie..."
+                      : "+ Dodaj"}
+                  </button>
                 </div>
               </form>
 
               {selectedIngredients.length === 0 ? (
-                <div style={smallEmptyStyle}>
-                  Brak składników. Wybierz produkt i dodaj
-                  pierwszy składnik.
+                <div style={emptyIngredientsStyle}>
+                  Brak składników. Wybierz produkt z
+                  bazy powyżej i dodaj jego ilość.
                 </div>
               ) : (
                 <div style={ingredientsListStyle}>
@@ -959,7 +1026,7 @@ export default function Recipes() {
                         ingredient.product_id
                       );
 
-                      const cost =
+                      const ingredientCost =
                         calculateIngredientCost(
                           ingredient
                         );
@@ -967,7 +1034,9 @@ export default function Recipes() {
                       return (
                         <div
                           key={ingredient.id}
-                          style={ingredientRowStyle}
+                          style={
+                            ingredientRowStyle
+                          }
                         >
                           <div
                             style={
@@ -980,8 +1049,9 @@ export default function Recipes() {
                               }
                             >
                               {product?.name
-                                ?.charAt(0)
-                                .toUpperCase() ?? "?"}
+                                .charAt(0)
+                                .toUpperCase() ??
+                                "P"}
                             </div>
 
                             <div>
@@ -1009,25 +1079,29 @@ export default function Recipes() {
 
                           <div
                             style={
-                              ingredientCostStyle
+                              ingredientRightStyle
                             }
                           >
-                            {formatMoney(cost)}
-                          </div>
+                            <strong>
+                              {formatMoney(
+                                ingredientCost
+                              )}
+                            </strong>
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              deleteIngredient(
-                                ingredient
-                              )
-                            }
-                            style={
-                              smallDeleteButtonStyle
-                            }
-                          >
-                            Usuń
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                deleteIngredient(
+                                  ingredient
+                                )
+                              }
+                              style={
+                                smallDeleteButtonStyle
+                              }
+                            >
+                              Usuń
+                            </button>
+                          </div>
                         </div>
                       );
                     }
@@ -1035,31 +1109,29 @@ export default function Recipes() {
                 </div>
               )}
 
-              <div style={totalCostBoxStyle}>
+              <div style={totalCostStyle}>
                 <div>
-                  <span style={totalLabelStyle}>
-                    Łączny koszt składników
+                  <span
+                    style={totalLabelStyle}
+                  >
+                    Łączny koszt receptury
                   </span>
 
-                  <strong style={totalValueStyle}>
-                    {formatMoney(selectedRecipeCost)}
-                  </strong>
+                  <span
+                    style={totalHintStyle}
+                  >
+                    Na podstawie cen produktów
+                    zapisanych w bazie.
+                  </span>
                 </div>
 
-                {selectedRecipe.portions && (
-                  <div style={costPerPortionStyle}>
-                    <span>
-                      Koszt 1 porcji
-                    </span>
-
-                    <strong>
-                      {formatMoney(
-                        selectedRecipeCost /
-                          selectedRecipe.portions
-                      )}
-                    </strong>
-                  </div>
-                )}
+                <strong
+                  style={totalValueStyle}
+                >
+                  {formatMoney(
+                    selectedRecipeCost
+                  )}
+                </strong>
               </div>
             </div>
           )}
@@ -1073,8 +1145,8 @@ export default function Recipes() {
               </h3>
 
               <p style={cardSubtitleStyle}>
-                Kliknij recepturę, aby zarządzać jej
-                składnikami i kosztem.
+                Kliknij recepturę, aby zarządzać
+                jej składnikami.
               </p>
             </div>
 
@@ -1094,9 +1166,13 @@ export default function Recipes() {
             </div>
           ) : recipes.length === 0 ? (
             <div style={emptyStyle}>
-              <div style={emptyIconStyle}>R</div>
+              <div style={emptyIconStyle}>
+                R
+              </div>
 
-              <strong>Brak receptur</strong>
+              <strong>
+                Brak receptur
+              </strong>
 
               <p style={emptyTextStyle}>
                 Dodaj pierwszą recepturę za pomocą
@@ -1107,23 +1183,27 @@ export default function Recipes() {
             <div style={recipesListStyle}>
               {recipes.map((recipe) => {
                 const recipeCost =
-                  calculateRecipeCost(recipe.id);
+                  calculateRecipeCost(
+                    recipe.id
+                  );
 
-                const recipeIngredientCount =
+                const recipeIngredients =
                   ingredients.filter(
                     (ingredient) =>
-                      ingredient.recipe_id === recipe.id
-                  ).length;
+                      ingredient.recipe_id ===
+                      recipe.id
+                  );
 
-                const selected =
-                  selectedRecipeId === recipe.id;
+                const isSelected =
+                  selectedRecipeId ===
+                  recipe.id;
 
                 return (
                   <div
                     key={recipe.id}
                     style={{
                       ...recipeRowStyle,
-                      ...(selected
+                      ...(isSelected
                         ? selectedRecipeRowStyle
                         : {}),
                     }}
@@ -1133,125 +1213,149 @@ export default function Recipes() {
                       onClick={() =>
                         selectRecipe(recipe)
                       }
-                      style={recipeSelectButtonStyle}
+                      style={
+                        recipeSelectButtonStyle
+                      }
                     >
                       <div
-                        style={recipeIconStyle}
+                        style={
+                          recipeMainStyle
+                        }
                       >
-                        {recipe.name
-                          .charAt(0)
-                          .toUpperCase()}
+                        <div
+                          style={
+                            recipeIconStyle
+                          }
+                        >
+                          {recipe.name
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+
+                        <div>
+                          <div
+                            style={
+                              recipeNameStyle
+                            }
+                          >
+                            {recipe.name}
+                          </div>
+
+                          <div
+                            style={
+                              recipeMetaStyle
+                            }
+                          >
+                            {recipe.category ||
+                              "Bez kategorii"}
+
+                            {" • "}
+
+                            {
+                              recipeIngredients.length
+                            }{" "}
+                            {recipeIngredients.length ===
+                            1
+                              ? "składnik"
+                              : recipeIngredients.length >=
+                                  2 &&
+                                recipeIngredients.length <=
+                                  4
+                              ? "składniki"
+                              : "składników"}
+                          </div>
+                        </div>
                       </div>
 
                       <div
-                        style={recipeMainStyle}
+                        style={
+                          recipeInfoStyle
+                        }
                       >
-                        <div
-                          style={
-                            recipeNameStyle
-                          }
-                        >
-                          {recipe.name}
+                        <div>
+                          <span
+                            style={
+                              detailLabelStyle
+                            }
+                          >
+                            Porcje
+                          </span>
+
+                          <strong>
+                            {getRecipePortionsLabel(
+                              recipe.portions
+                            )}
+                          </strong>
                         </div>
 
-                        <div
-                          style={
-                            recipeMetaStyle
-                          }
-                        >
-                          {recipe.category ||
-                            "Bez kategorii"}
-                          {" • "}
-                          {getRecipePortionsLabel(
-                            recipe.portions
-                          )}
-                          {" • "}
-                          {recipeIngredientCount}{" "}
-                          {recipeIngredientCount ===
-                          1
-                            ? "składnik"
-                            : recipeIngredientCount >=
-                                2 &&
-                              recipeIngredientCount <=
-                                4
-                            ? "składniki"
-                            : "składników"}
+                        <div>
+                          <span
+                            style={
+                              detailLabelStyle
+                            }
+                          >
+                            Rozmiar
+                          </span>
+
+                          <strong>
+                            {recipe.diameter_cm
+                              ? `${formatNumber(
+                                  recipe.diameter_cm
+                                )} cm`
+                              : "—"}
+
+                            {recipe.height_cm
+                              ? ` × ${formatNumber(
+                                  recipe.height_cm
+                                )} cm`
+                              : ""}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span
+                            style={
+                              detailLabelStyle
+                            }
+                          >
+                            Koszt
+                          </span>
+
+                          <strong
+                            style={
+                              recipeCostValueStyle
+                            }
+                          >
+                            {formatMoney(
+                              recipeCost
+                            )}
+                          </strong>
                         </div>
                       </div>
                     </button>
 
                     <div
                       style={
-                        recipeDetailsStyle
+                        recipeActionsStyle
                       }
                     >
-                      <div>
-                        <span
-                          style={
-                            detailLabelStyle
-                          }
-                        >
-                          Wymiary
-                        </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleActive(recipe)
+                        }
+                        style={{
+                          ...statusStyle,
+                          ...(recipe.active
+                            ? activeStatusStyle
+                            : inactiveStatusStyle),
+                        }}
+                      >
+                        {recipe.active
+                          ? "Aktywna"
+                          : "Nieaktywna"}
+                      </button>
 
-                        <strong>
-                          {recipe.diameter_cm
-                            ? `${formatNumber(
-                                recipe.diameter_cm
-                              )} cm`
-                            : "—"}
-                          {" × "}
-                          {recipe.height_cm
-                            ? `${formatNumber(
-                                recipe.height_cm
-                              )} cm`
-                            : "—"}
-                        </strong>
-                      </div>
-
-                      <div>
-                        <span
-                          style={
-                            detailLabelStyle
-                          }
-                        >
-                          Koszt
-                        </span>
-
-                        <strong>
-                          {formatMoney(recipeCost)}
-                        </strong>
-                      </div>
-
-                      <div>
-                        <span
-                          style={
-                            detailLabelStyle
-                          }
-                        >
-                          Status
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            toggleActive(recipe)
-                          }
-                          style={{
-                            ...statusStyle,
-                            ...(recipe.active
-                              ? activeStatusStyle
-                              : inactiveStatusStyle),
-                          }}
-                        >
-                          {recipe.active
-                            ? "Aktywna"
-                            : "Nieaktywna"}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div style={actionsStyle}>
                       <button
                         type="button"
                         onClick={() =>
@@ -1328,7 +1432,7 @@ const countBadgeStyle = {
 const contentGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(300px, 380px) minmax(0, 1fr)",
+    "minmax(320px, 420px) minmax(0, 1fr)",
   gap: "20px",
   alignItems: "start",
 };
@@ -1342,8 +1446,12 @@ const formCardStyle = {
 };
 
 const ingredientsCardStyle = {
-  ...formCardStyle,
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "18px",
+  padding: "24px",
   marginTop: "20px",
+  boxSizing: "border-box" as const,
 };
 
 const listCardStyle = {
@@ -1408,18 +1516,11 @@ const textareaStyle = {
   fontFamily: "inherit",
 };
 
-const twoColumnStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: "12px",
-};
-
-const ingredientGridStyle = {
+const threeColumnStyle = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(180px, 1.6fr) minmax(100px, 0.7fr) minmax(80px, 0.5fr) auto",
+    "1fr 1fr 1fr",
   gap: "10px",
-  alignItems: "start",
 };
 
 const checkboxLabelStyle = {
@@ -1443,16 +1544,16 @@ const buttonStyle = {
   cursor: "pointer",
 };
 
-const smallAddButtonStyle = {
+const smallButtonStyle = {
+  width: "100%",
   border: "none",
   borderRadius: "9px",
-  padding: "11px 14px",
+  padding: "11px 13px",
   background: "#8a6d4b",
   color: "#ffffff",
   fontSize: "13px",
   fontWeight: 600,
   cursor: "pointer",
-  whiteSpace: "nowrap" as const,
 };
 
 const cancelButtonStyle = {
@@ -1525,45 +1626,67 @@ const emptyTextStyle = {
   fontSize: "13px",
 };
 
-const recipesListStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
+const ingredientFormStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(220px, 1fr) 120px 120px 100px",
   gap: "10px",
+  alignItems: "end",
+  marginBottom: "20px",
 };
 
-const recipeRowStyle = {
-  border: "1px solid #eee7e0",
-  borderRadius: "13px",
-  padding: "14px",
+const ingredientProductFieldStyle = {
+  minWidth: 0,
+};
+
+const ingredientQuantityFieldStyle = {
+  minWidth: 0,
+};
+
+const ingredientUnitFieldStyle = {
+  minWidth: 0,
+};
+
+const ingredientButtonFieldStyle = {
+  paddingBottom: "16px",
+};
+
+const emptyIngredientsStyle = {
+  border: "1px dashed #ddd3c9",
+  borderRadius: "11px",
+  padding: "20px",
+  textAlign: "center" as const,
+  color: "#8a837d",
+  fontSize: "13px",
+};
+
+const ingredientsListStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "8px",
+};
+
+const ingredientRowStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  gap: "16px",
-  flexWrap: "wrap" as const,
+  gap: "15px",
+  border: "1px solid #eee7e0",
+  borderRadius: "11px",
+  padding: "10px 12px",
 };
 
-const selectedRecipeRowStyle = {
-  border: "1px solid #cbb59f",
-  background: "#fffdfb",
-};
-
-const recipeSelectButtonStyle = {
+const ingredientMainStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "12px",
-  border: "none",
-  background: "transparent",
-  padding: 0,
-  cursor: "pointer",
-  textAlign: "left" as const,
-  minWidth: "220px",
-  flex: "1 1 240px",
+  gap: "10px",
+  minWidth: 0,
 };
 
-const recipeIconStyle = {
-  width: "42px",
-  height: "42px",
-  borderRadius: "11px",
+const ingredientIconStyle = {
+  width: "34px",
+  height: "34px",
+  borderRadius: "9px",
   background: "#f2ebe4",
   color: "#8a6d4b",
   display: "flex",
@@ -1573,8 +1696,127 @@ const recipeIconStyle = {
   flexShrink: 0,
 };
 
-const recipeMainStyle = {
+const ingredientNameStyle = {
+  fontSize: "14px",
+  fontWeight: 600,
+  color: "#292522",
+};
+
+const ingredientMetaStyle = {
+  marginTop: "3px",
+  color: "#8a837d",
+  fontSize: "12px",
+};
+
+const ingredientRightStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  flexShrink: 0,
+};
+
+const smallDeleteButtonStyle = {
+  border: "1px solid #e3c1bd",
+  background: "#fff8f7",
+  color: "#a34f46",
+  borderRadius: "7px",
+  padding: "6px 9px",
+  cursor: "pointer",
+  fontSize: "11px",
+  fontWeight: 600,
+};
+
+const costBadgeStyle = {
+  background: "#f0f8f2",
+  color: "#477451",
+  border: "1px solid #bdd9c3",
+  borderRadius: "10px",
+  padding: "8px 11px",
+  fontSize: "12px",
+  whiteSpace: "nowrap" as const,
+};
+
+const totalCostStyle = {
+  marginTop: "16px",
+  paddingTop: "16px",
+  borderTop: "1px solid #eee7e0",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "15px",
+};
+
+const totalLabelStyle = {
+  display: "block",
+  color: "#514b46",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const totalHintStyle = {
+  display: "block",
+  marginTop: "3px",
+  color: "#9a928b",
+  fontSize: "11px",
+};
+
+const totalValueStyle = {
+  color: "#477451",
+  fontSize: "24px",
+};
+
+const recipesListStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "10px",
+};
+
+const recipeRowStyle = {
+  border: "1px solid #eee7e0",
+  borderRadius: "13px",
+  padding: "12px",
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+};
+
+const selectedRecipeRowStyle = {
+  border: "1px solid #d8c8b8",
+  background: "#fcfaf7",
+};
+
+const recipeSelectButtonStyle = {
+  flex: 1,
   minWidth: 0,
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "18px",
+  cursor: "pointer",
+  textAlign: "left" as const,
+};
+
+const recipeMainStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  minWidth: "190px",
+};
+
+const recipeIconStyle = {
+  width: "40px",
+  height: "40px",
+  borderRadius: "11px",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 700,
+  flexShrink: 0,
 };
 
 const recipeNameStyle = {
@@ -1589,7 +1831,7 @@ const recipeMetaStyle = {
   fontSize: "12px",
 };
 
-const recipeDetailsStyle = {
+const recipeInfoStyle = {
   display: "flex",
   alignItems: "center",
   gap: "22px",
@@ -1605,10 +1847,21 @@ const detailLabelStyle = {
   marginBottom: "4px",
 };
 
+const recipeCostValueStyle = {
+  color: "#477451",
+};
+
+const recipeActionsStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "7px",
+  flexShrink: 0,
+};
+
 const statusStyle = {
   border: "none",
   borderRadius: "20px",
-  padding: "4px 8px",
+  padding: "5px 9px",
   fontSize: "11px",
   fontWeight: 600,
   cursor: "pointer",
@@ -1622,12 +1875,6 @@ const activeStatusStyle = {
 const inactiveStatusStyle = {
   background: "#f3f1ef",
   color: "#817a74",
-};
-
-const actionsStyle = {
-  display: "flex",
-  gap: "8px",
-  marginLeft: "auto",
 };
 
 const editButtonStyle = {
@@ -1650,125 +1897,4 @@ const deleteButtonStyle = {
   cursor: "pointer",
   fontSize: "12px",
   fontWeight: 600,
-};
-
-const ingredientsListStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "8px",
-  marginTop: "6px",
-};
-
-const ingredientRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  border: "1px solid #eee7e0",
-  borderRadius: "10px",
-  padding: "10px",
-};
-
-const ingredientMainStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  flex: "1 1 auto",
-  minWidth: "180px",
-};
-
-const ingredientIconStyle = {
-  width: "34px",
-  height: "34px",
-  borderRadius: "9px",
-  background: "#f2ebe4",
-  color: "#8a6d4b",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: "12px",
-  fontWeight: 700,
-  flexShrink: 0,
-};
-
-const ingredientNameStyle = {
-  fontSize: "13px",
-  fontWeight: 600,
-  color: "#292522",
-};
-
-const ingredientMetaStyle = {
-  marginTop: "3px",
-  fontSize: "11px",
-  color: "#8a837d",
-};
-
-const ingredientCostStyle = {
-  fontWeight: 700,
-  color: "#8a6d4b",
-  minWidth: "75px",
-  textAlign: "right" as const,
-};
-
-const smallDeleteButtonStyle = {
-  border: "1px solid #e3c1bd",
-  background: "#fff8f7",
-  color: "#a34f46",
-  borderRadius: "7px",
-  padding: "6px 9px",
-  cursor: "pointer",
-  fontSize: "11px",
-  fontWeight: 600,
-};
-
-const smallEmptyStyle = {
-  padding: "18px",
-  border: "1px dashed #ddd3c9",
-  borderRadius: "10px",
-  color: "#8a837d",
-  fontSize: "13px",
-  textAlign: "center" as const,
-};
-
-const costBadgeStyle = {
-  background: "#f0f8f2",
-  color: "#477451",
-  borderRadius: "20px",
-  padding: "8px 12px",
-  fontSize: "12px",
-  fontWeight: 700,
-  whiteSpace: "nowrap" as const,
-};
-
-const totalCostBoxStyle = {
-  marginTop: "18px",
-  padding: "16px",
-  borderRadius: "12px",
-  background: "#f8f3ee",
-  border: "1px solid #e7ddd2",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "20px",
-  flexWrap: "wrap" as const,
-};
-
-const totalLabelStyle = {
-  display: "block",
-  color: "#8a837d",
-  fontSize: "11px",
-  marginBottom: "4px",
-};
-
-const totalValueStyle = {
-  fontSize: "24px",
-  color: "#8a6d4b",
-};
-
-const costPerPortionStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  alignItems: "flex-end",
-  gap: "3px",
-  color: "#8a837d",
-  fontSize: "11px",
 };
