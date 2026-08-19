@@ -4,12 +4,12 @@ import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 export default function Home() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [loggingIn, setLoggingIn] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -20,7 +20,9 @@ export default function Home() {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setLoggedIn(!!session);
       setLoading(false);
@@ -30,14 +32,14 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (!mounted) return;
-
-        setLoggedIn(!!session);
-        setLoading(false);
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) {
+        return;
       }
-    );
+
+      setLoggedIn(!!session);
+      setLoading(false);
+    });
 
     return () => {
       mounted = false;
@@ -46,63 +48,26 @@ export default function Home() {
   }, []);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
-  event.preventDefault();
-
-  setError("");
-  setLoggingIn(true);
-
-  const cleanEmail = email.trim();
-
-  if (!cleanEmail || !password) {
-    setError("Wpisz e-mail i hasło.");
-    setLoggingIn(false);
-    return;
-  }
-
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: cleanEmail,
-    password,
-  });
-
-  console.log("SUPABASE LOGIN DATA:", data);
-  console.log("SUPABASE LOGIN ERROR:", error);
-
-  if (error) {
-    setError(
-      `Supabase: ${error.message}`
-    );
-    setLoggingIn(false);
-    return;
-  }
-
-  if (!data.session) {
-    setError("Logowanie nie utworzyło sesji.");
-    setLoggingIn(false);
-    return;
-  }
-
-  setPassword("");
-  setLoggingIn(false);
-}
     event.preventDefault();
 
     setError("");
-    setLoggingIn(true);
 
     const cleanEmail = email.trim();
 
     if (!cleanEmail || !password) {
       setError("Wpisz e-mail i hasło.");
-      setLoggingIn(false);
       return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password,
-    });
+    setLoggingIn(true);
 
-    if (error) {
+    const { error: loginError } =
+      await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+    if (loginError) {
       setError("Nie udało się zalogować. Sprawdź dane i spróbuj ponownie.");
       setLoggingIn(false);
       return;
@@ -114,7 +79,11 @@ export default function Home() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
+
     setLoggedIn(false);
+    setEmail("");
+    setPassword("");
+    setError("");
   }
 
   if (loading) {
@@ -122,8 +91,14 @@ export default function Home() {
       <main style={pageStyle}>
         <div style={loadingBoxStyle}>
           <div style={brandStyle}>Délice</div>
-          <h1 style={loadingTitleStyle}>Kalkulator tortów</h1>
-          <p style={mutedStyle}>Sprawdzanie sesji...</p>
+
+          <h1 style={titleStyle}>
+            Kalkulator tortów
+          </h1>
+
+          <p style={mutedStyle}>
+            Sprawdzanie sesji...
+          </p>
         </div>
       </main>
     );
@@ -141,7 +116,7 @@ export default function Home() {
             </h1>
 
             <p style={mutedStyle}>
-              Zaloguj się do swojego panelu.
+              Zaloguj się do swojego panelu
             </p>
           </div>
 
@@ -160,6 +135,7 @@ export default function Home() {
                 placeholder="Wpisz e-mail"
                 autoComplete="email"
                 disabled={loggingIn}
+                required
                 style={inputStyle}
               />
             </label>
@@ -178,6 +154,7 @@ export default function Home() {
                 placeholder="Wpisz hasło"
                 autoComplete="current-password"
                 disabled={loggingIn}
+                required
                 style={inputStyle}
               />
             </label>
@@ -218,9 +195,11 @@ export default function Home() {
       <div style={containerStyle}>
         <header style={headerStyle}>
           <div>
-            <div style={brandStyle}>Délice</div>
+            <div style={brandStyle}>
+              Délice
+            </div>
 
-            <h1 style={mainTitleStyle}>
+            <h1 style={titleStyle}>
               Kalkulator tortów
             </h1>
 
@@ -262,9 +241,9 @@ const loginPageStyle = {
   alignItems: "center",
   justifyContent: "center",
   padding: "20px",
-  boxSizing: "border-box" as const,
   fontFamily: "Arial, sans-serif",
   color: "#292522",
+  boxSizing: "border-box" as const,
 };
 
 const loginBoxStyle = {
@@ -279,12 +258,14 @@ const loginBoxStyle = {
 };
 
 const loadingBoxStyle = {
-  maxWidth: "500px",
-  margin: "100px auto",
+  width: "100%",
+  maxWidth: "420px",
+  margin: "120px auto",
   background: "#ffffff",
   border: "1px solid #e9e2da",
   borderRadius: "20px",
   padding: "35px",
+  boxSizing: "border-box" as const,
   textAlign: "center" as const,
 };
 
@@ -306,15 +287,9 @@ const loginTitleStyle = {
   margin: 0,
 };
 
-const loadingTitleStyle = {
-  fontSize: "30px",
-  margin: "0 0 10px",
-};
-
-const mainTitleStyle = {
+const titleStyle = {
   fontSize: "42px",
   margin: 0,
-  fontWeight: 700,
 };
 
 const subtitleStyle = {
@@ -342,7 +317,7 @@ const labelTextStyle = {
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box" as const,
-  padding: "12px",
+  padding: "13px",
   border: "1px solid #ddd3c9",
   borderRadius: "9px",
   background: "#ffffff",
@@ -362,24 +337,15 @@ const primaryButtonStyle = {
   fontWeight: 600,
 };
 
-const logoutButtonStyle = {
-  border: "1px solid #ddd3c9",
-  background: "#ffffff",
-  color: "#8a6d4b",
-  borderRadius: "10px",
-  padding: "10px 15px",
-  cursor: "pointer",
-  fontSize: "14px",
-};
-
 const errorStyle = {
   background: "#fff1f0",
-  border: "1px solid #e5b8b3",
+  border: "1px solid #e7b8b3",
   color: "#9b4d43",
   borderRadius: "9px",
-  padding: "11px 12px",
-  marginBottom: "15px",
+  padding: "12px",
+  marginBottom: "18px",
   fontSize: "14px",
+  lineHeight: 1.5,
 };
 
 const loginFooterStyle = {
@@ -395,4 +361,14 @@ const headerStyle = {
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: "20px",
+};
+
+const logoutButtonStyle = {
+  border: "1px solid #ddd3c9",
+  background: "#ffffff",
+  color: "#8a6d4b",
+  borderRadius: "10px",
+  padding: "10px 15px",
+  cursor: "pointer",
+  fontSize: "14px",
 };
