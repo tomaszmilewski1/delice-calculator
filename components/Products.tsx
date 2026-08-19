@@ -36,6 +36,17 @@ const emptyForm: ProductForm = {
   active: true,
 };
 
+const allowedUnits = [
+  "g",
+  "kg",
+  "ml",
+  "l",
+  "szt",
+  "opak.",
+  "łyżka",
+  "łyżeczka",
+];
+
 export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,36 +141,56 @@ export default function Products() {
       return;
     }
 
+    const cleanUnit = form.unit.trim() || null;
+
+    if (
+      cleanUnit !== null &&
+      !allowedUnits.includes(cleanUnit)
+    ) {
+      setError("Wybierz prawidłową jednostkę.");
+      return;
+    }
+
     const quantityValue =
       form.packageQuantity.trim() === ""
         ? null
-        : Number(form.packageQuantity.replace(",", "."));
+        : Number(
+            form.packageQuantity.replace(",", ".")
+          );
 
     const priceValue =
       form.packagePrice.trim() === ""
         ? null
-        : Number(form.packagePrice.replace(",", "."));
+        : Number(
+            form.packagePrice.replace(",", ".")
+          );
 
     if (
       quantityValue !== null &&
-      (!Number.isFinite(quantityValue) || quantityValue < 0)
+      (!Number.isFinite(quantityValue) ||
+        quantityValue < 0)
     ) {
-      setError("Ilość w opakowaniu musi być prawidłową liczbą.");
+      setError(
+        "Ilość w opakowaniu musi być prawidłową liczbą."
+      );
       return;
     }
 
     if (
       priceValue !== null &&
-      (!Number.isFinite(priceValue) || priceValue < 0)
+      (!Number.isFinite(priceValue) ||
+        priceValue < 0)
     ) {
-      setError("Cena opakowania musi być prawidłową liczbą.");
+      setError(
+        "Cena opakowania musi być prawidłową liczbą."
+      );
       return;
     }
 
     const productData = {
       name: cleanName,
       category: form.category.trim() || null,
-      unit: form.unit.trim() || null,
+      unit: cleanUnit,
       package_quantity: quantityValue,
       package_price: priceValue,
       notes: form.notes.trim() || null,
@@ -235,7 +266,9 @@ export default function Products() {
       cancelEditing();
     }
 
-    setSuccess(`Produkt "${product.name}" został usunięty.`);
+    setSuccess(
+      `Produkt "${product.name}" został usunięty.`
+    );
 
     await loadProducts();
   }
@@ -300,7 +333,9 @@ export default function Products() {
     <section style={pageStyle}>
       <div style={headerStyle}>
         <div>
-          <div style={eyebrowStyle}>BAZA PRODUKTÓW</div>
+          <div style={eyebrowStyle}>
+            BAZA PRODUKTÓW
+          </div>
 
           <h2 style={titleStyle}>
             Produkty
@@ -316,7 +351,8 @@ export default function Products() {
           {products.length}{" "}
           {products.length === 1
             ? "produkt"
-            : products.length >= 2 && products.length <= 4
+            : products.length >= 2 &&
+              products.length <= 4
             ? "produkty"
             : "produktów"}
         </div>
@@ -360,7 +396,10 @@ export default function Products() {
                 type="text"
                 value={form.name}
                 onChange={(event) =>
-                  updateForm("name", event.target.value)
+                  updateForm(
+                    "name",
+                    event.target.value
+                  )
                 }
                 placeholder="np. Mąka pszenna"
                 disabled={saving}
@@ -377,7 +416,10 @@ export default function Products() {
                 type="text"
                 value={form.category}
                 onChange={(event) =>
-                  updateForm("category", event.target.value)
+                  updateForm(
+                    "category",
+                    event.target.value
+                  )
                 }
                 placeholder="np. Produkty sypkie"
                 disabled={saving}
@@ -391,16 +433,53 @@ export default function Products() {
                   Jednostka
                 </span>
 
-                <input
-                  type="text"
+                <select
                   value={form.unit}
                   onChange={(event) =>
-                    updateForm("unit", event.target.value)
+                    updateForm(
+                      "unit",
+                      event.target.value
+                    )
                   }
-                  placeholder="kg, g, szt."
                   disabled={saving}
                   style={inputStyle}
-                />
+                >
+                  <option value="">
+                    Wybierz jednostkę
+                  </option>
+
+                  <option value="g">
+                    g — gram
+                  </option>
+
+                  <option value="kg">
+                    kg — kilogram
+                  </option>
+
+                  <option value="ml">
+                    ml — mililitr
+                  </option>
+
+                  <option value="l">
+                    l — litr
+                  </option>
+
+                  <option value="szt">
+                    szt — sztuka
+                  </option>
+
+                  <option value="opak.">
+                    opak. — opakowanie
+                  </option>
+
+                  <option value="łyżka">
+                    łyżka
+                  </option>
+
+                  <option value="łyżeczka">
+                    łyżeczka
+                  </option>
+                </select>
               </label>
 
               <label style={labelStyle}>
@@ -430,7 +509,9 @@ export default function Products() {
                 Cena opakowania
               </span>
 
-              <div style={priceInputWrapperStyle}>
+              <div
+                style={priceInputWrapperStyle}
+              >
                 <input
                   type="text"
                   inputMode="decimal"
@@ -460,7 +541,10 @@ export default function Products() {
               <textarea
                 value={form.notes}
                 onChange={(event) =>
-                  updateForm("notes", event.target.value)
+                  updateForm(
+                    "notes",
+                    event.target.value
+                  )
                 }
                 placeholder="Opcjonalne informacje"
                 disabled={saving}
