@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import Products from "../components/Products";
 
 type View =
   | "dashboard"
@@ -353,17 +354,13 @@ export default function Home() {
             </section>
 
             <section style={sectionStyle}>
-              <div style={sectionHeaderStyle}>
-                <div>
-                  <h2 style={sectionTitleStyle}>
-                    Podsumowanie
-                  </h2>
+              <h2 style={sectionTitleStyle}>
+                Podsumowanie
+              </h2>
 
-                  <p style={mutedStyle}>
-                    Najważniejsze informacje z pracowni.
-                  </p>
-                </div>
-              </div>
+              <p style={mutedStyle}>
+                Najważniejsze informacje z pracowni.
+              </p>
 
               <div style={statsGridStyle}>
                 <Stat
@@ -398,7 +395,7 @@ export default function Home() {
                   Witaj w panelu Délice
                 </h2>
 
-                <p style={mutedStyle}>
+                <p style={welcomeTextStyle}>
                   Wybierz jeden z modułów powyżej,
                   aby rozpocząć pracę.
                 </p>
@@ -407,45 +404,42 @@ export default function Home() {
           </>
         )}
 
+        {view === "products" && (
+          <Products />
+        )}
+
         {view === "cake" && (
           <ModulePage
             title="Nowy tort"
-            description="Tutaj stworzymy kalkulator kosztu i ceny sprzedaży tortu."
-          />
-        )}
-
-        {view === "products" && (
-          <ModulePage
-            title="Produkty"
-            description="Tutaj będziemy zarządzać produktami zapisanymi w Supabase."
+            description="Moduł kalkulatora tortów przygotujemy w kolejnym kroku."
           />
         )}
 
         {view === "recipes" && (
           <ModulePage
             title="Receptury"
-            description="Tutaj będziemy tworzyć i zapisywać receptury."
+            description="Moduł receptur przygotujemy w kolejnym kroku."
           />
         )}
 
         {view === "orders" && (
           <ModulePage
             title="Zamówienia"
-            description="Tutaj będziemy zarządzać zamówieniami klientów."
+            description="Moduł zamówień przygotujemy w kolejnym kroku."
           />
         )}
 
         {view === "customers" && (
           <ModulePage
             title="Klienci"
-            description="Tutaj będziemy zarządzać bazą klientów."
+            description="Moduł klientów przygotujemy w kolejnym kroku."
           />
         )}
 
         {view === "expenses" && (
           <ModulePage
             title="Koszty"
-            description="Tutaj będziemy zapisywać dodatkowe koszty."
+            description="Moduł kosztów przygotujemy w kolejnym kroku."
           />
         )}
       </div>
@@ -464,6 +458,7 @@ function DashboardCard({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       style={dashboardCardStyle}
     >
@@ -510,17 +505,6 @@ function ModulePage({
           </p>
         </div>
       </div>
-
-      <div style={comingSoonStyle}>
-        <strong>
-          Moduł gotowy do podłączenia
-        </strong>
-
-        <p style={{ marginBottom: 0 }}>
-          W kolejnym kroku podłączymy ten moduł
-          bezpośrednio do danych w Supabase.
-        </p>
-      </div>
     </section>
   );
 }
@@ -549,8 +533,7 @@ const pageStyle = {
   minHeight: "100vh",
   background: "#faf8f5",
   color: "#292522",
-  fontFamily:
-    "Arial, Helvetica, sans-serif",
+  fontFamily: "Arial, Helvetica, sans-serif",
   padding: "40px 20px",
   boxSizing: "border-box" as const,
 };
@@ -567,8 +550,7 @@ const loginPageStyle = {
   alignItems: "center",
   justifyContent: "center",
   padding: "20px",
-  fontFamily:
-    "Arial, Helvetica, sans-serif",
+  fontFamily: "Arial, Helvetica, sans-serif",
   color: "#292522",
   boxSizing: "border-box" as const,
 };
@@ -581,8 +563,7 @@ const loginBoxStyle = {
   borderRadius: "20px",
   padding: "35px",
   boxSizing: "border-box" as const,
-  boxShadow:
-    "0 10px 30px rgba(0,0,0,0.05)",
+  boxShadow: "0 10px 30px rgba(0,0,0,0.05)",
 };
 
 const loadingBoxStyle = {
@@ -628,6 +609,11 @@ const subtitleStyle = {
 
 const mutedStyle = {
   color: "#716b65",
+  lineHeight: 1.6,
+};
+
+const welcomeTextStyle = {
+  color: "rgba(255,255,255,0.82)",
   lineHeight: 1.6,
 };
 
@@ -742,7 +728,6 @@ const dashboardCardStyle = {
   color: "#292522",
   width: "100%",
   boxSizing: "border-box" as const,
-  transition: "transform 0.15s ease",
 };
 
 const cardIconStyle = {
@@ -787,14 +772,6 @@ const sectionStyle = {
   boxSizing: "border-box" as const,
 };
 
-const sectionHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "15px",
-  marginBottom: "25px",
-};
-
 const sectionTitleStyle = {
   margin: 0,
   fontSize: "24px",
@@ -805,6 +782,7 @@ const statsGridStyle = {
   gridTemplateColumns:
     "repeat(auto-fit, minmax(180px, 1fr))",
   gap: "15px",
+  marginTop: "22px",
 };
 
 const statStyle = {
@@ -855,7 +833,6 @@ const moduleHeaderStyle = {
   display: "flex",
   alignItems: "center",
   gap: "18px",
-  marginBottom: "25px",
 };
 
 const moduleIconStyle = {
@@ -875,13 +852,4 @@ const moduleIconStyle = {
 const moduleTitleStyle = {
   margin: 0,
   fontSize: "30px",
-};
-
-const comingSoonStyle = {
-  padding: "25px",
-  background: "#faf8f5",
-  borderRadius: "14px",
-  border: "1px dashed #ddd3c9",
-  color: "#716b65",
-  lineHeight: 1.6,
 };
