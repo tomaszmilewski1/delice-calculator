@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 type Recipe = {
@@ -14,7 +14,6 @@ type Recipe = {
   active: boolean;
   created_at: string;
   updated_at: string;
-  user_id: string | null;
 };
 
 type Product = {
@@ -33,8 +32,6 @@ type RecipeIngredient = {
   product_id: string;
   quantity: number;
   unit: string;
-  created_at: string;
-  user_id: string | null;
 };
 
 type RecipeForm = {
@@ -90,14 +87,19 @@ export default function Recipes() {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    loadRecipes();
-    loadProducts();
+    loadAll();
   }, []);
 
-  async function loadRecipes() {
+  async function loadAll() {
     setLoading(true);
     setError("");
 
+    await Promise.all([loadRecipes(), loadProducts()]);
+
+    setLoading(false);
+  }
+
+  async function loadRecipes() {
     const { data, error: recipesError } = await supabase
       .from("recipes")
       .select("*")
@@ -107,12 +109,10 @@ export default function Recipes() {
       setError(
         `Nie udało się pobrać receptur: ${recipesError.message}`
       );
-      setLoading(false);
       return;
     }
 
     setRecipes((data ?? []) as Recipe[]);
-    setLoading(false);
   }
 
   async function loadProducts() {
@@ -136,8 +136,7 @@ export default function Recipes() {
     const { data, error: ingredientsError } = await supabase
       .from("recipe_ingredients")
       .select("*")
-      .eq("recipe_id", recipeId)
-      .order("created_at", { ascending: true });
+      .eq("recipe_id", recipeId);
 
     if (ingredientsError) {
       setError(
@@ -171,7 +170,6 @@ export default function Recipes() {
 
   function startEditing(recipe: Recipe) {
     setEditingId(recipe.id);
-    setSelectedRecipeId(recipe.id);
 
     setForm({
       name: recipe.name ?? "",
@@ -192,6 +190,8 @@ export default function Recipes() {
       active: recipe.active,
     });
 
+    setSelectedRecipeId(recipe.id);
+    setIngredientForm(emptyIngredientForm);
     setError("");
     setSuccess("");
 
@@ -201,14 +201,6 @@ export default function Recipes() {
       top: 0,
       behavior: "smooth",
     });
-  }
-
-  function selectRecipe(recipeId: string) {
-    setSelectedRecipeId(recipeId);
-    setError("");
-    setSuccess("");
-    setIngredientForm(emptyIngredientForm);
-    loadIngredients(recipeId);
   }
 
   function cancelEditing() {
@@ -317,17 +309,17 @@ export default function Recipes() {
         return;
       }
 
+      setSuccess("Receptura została dodana.");
+
       if (data) {
         setSelectedRecipeId(data.id);
       }
-
-      setSuccess("Receptura została dodana.");
     }
+
+    await loadRecipes();
 
     setForm(emptyForm);
     setEditingId(null);
-
-    await loadRecipes();
 
     setSaving(false);
   }
@@ -341,7 +333,7 @@ export default function Recipes() {
     setSuccess("");
 
     if (!selectedRecipeId) {
-      setError("Najpierw wybierz recepturę.");
+      setError("Najpierw wybierz lub edytuj recepturę.");
       return;
     }
 
@@ -355,7 +347,7 @@ export default function Recipes() {
     );
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      setError("Podaj ilość większą od 0.");
+      setError("Ilość składnika musi być większa od 0.");
       return;
     }
 
@@ -368,19 +360,21 @@ export default function Recipes() {
       return;
     }
 
-    const cleanUnit =
+    const unit =
       ingredientForm.unit.trim() || selectedProduct.unit;
 
     setSavingIngredient(true);
 
-    const { error: insertError } = await supabase
+    const { data, error: insertError } = await supabase
       .from("recipe_ingredients")
       .insert({
         recipe_id: selectedRecipeId,
         product_id: selectedProduct.id,
         quantity,
-        unit: cleanUnit,
-      });
+        unit,
+      })
+      .select()
+      .single();
 
     if (insertError) {
       setError(
@@ -390,33 +384,33 @@ export default function Recipes() {
       return;
     }
 
+    setIngredients((current) => [
+      ...current,
+      data as RecipeIngredient,
+    ]);
+
     setIngredientForm(emptyIngredientForm);
     setSuccess("Składnik został dodany.");
-
-    await loadIngredients(selectedRecipeId);
-
     setSavingIngredient(false);
   }
 
   async function deleteIngredient(
     ingredient: RecipeIngredient
   ) {
+    setError("");
+    setSuccess("");
+
     const product = products.find(
       (item) => item.id === ingredient.product_id
     );
 
-    const productName = product?.name ?? "ten składnik";
-
     const confirmed = window.confirm(
-      `Czy na pewno chcesz usunąć składnik "${productName}" z receptury?`
+      `Czy usunąć składnik "${product?.name ?? "produkt"}" z receptury?`
     );
 
     if (!confirmed) {
       return;
     }
-
-    setError("");
-    setSuccess("");
 
     const { error: deleteError } = await supabase
       .from("recipe_ingredients")
@@ -430,16 +424,16 @@ export default function Recipes() {
       return;
     }
 
-    setSuccess("Składnik został usunięty.");
+    setIngredients((current) =>
+      current.filter((item) => item.id !== ingredient.id)
+    );
 
-    if (selectedRecipeId) {
-      await loadIngredients(selectedRecipeId);
-    }
+    setSuccess("Składnik został usunięty.");
   }
 
   async function deleteRecipe(recipe: Recipe) {
     const confirmed = window.confirm(
-      `Czy na pewno chcesz usunąć recepturę "${recipe.name}"?\n\nTa operacja usunie również jej składniki.`
+      `Czy na pewno chcesz usunąć recepturę "${recipe.name}"?\n\nUsunięte zostaną również jej składniki.`
     );
 
     if (!confirmed) {
@@ -473,15 +467,14 @@ export default function Recipes() {
       return;
     }
 
-    if (editingId === recipe.id) {
-      setEditingId(null);
-      setForm(emptyForm);
-    }
-
     if (selectedRecipeId === recipe.id) {
       setSelectedRecipeId(null);
       setIngredients([]);
-      setIngredientForm(emptyIngredientForm);
+    }
+
+    if (editingId === recipe.id) {
+      setEditingId(null);
+      setForm(emptyForm);
     }
 
     setSuccess(
@@ -527,16 +520,39 @@ export default function Recipes() {
     );
   }
 
-  function getProductName(productId: string) {
-    return (
-      products.find((product) => product.id === productId)
-        ?.name ?? "Nieznany produkt"
-    );
+  function selectRecipe(recipeId: string) {
+    setSelectedRecipeId(recipeId);
+    setError("");
+    setSuccess("");
+    loadIngredients(recipeId);
   }
 
-  const selectedRecipe = recipes.find(
-    (recipe) => recipe.id === selectedRecipeId
+  const selectedRecipe = useMemo(
+    () =>
+      recipes.find(
+        (recipe) => recipe.id === selectedRecipeId
+      ) ?? null,
+    [recipes, selectedRecipeId]
   );
+
+  const ingredientCost = useMemo(() => {
+    return ingredients.reduce((total, ingredient) => {
+      const product = products.find(
+        (item) => item.id === ingredient.product_id
+      );
+
+      if (!product || !product.package_quantity) {
+        return total;
+      }
+
+      const cost =
+        (Number(ingredient.quantity) /
+          Number(product.package_quantity)) *
+        Number(product.package_price);
+
+      return total + cost;
+    }, 0);
+  }, [ingredients, products]);
 
   return (
     <section style={pageStyle}>
@@ -547,8 +563,8 @@ export default function Recipes() {
           <h2 style={titleStyle}>Receptury</h2>
 
           <p style={subtitleStyle}>
-            Twórz receptury tortów i przypisuj do nich składniki z
-            bazy produktów.
+            Twórz receptury i przypisuj do nich składniki
+            z bazy produktów.
           </p>
         </div>
 
@@ -562,9 +578,17 @@ export default function Recipes() {
         </div>
       </div>
 
-      {error && <div style={errorStyle}>{error}</div>}
+      {error && (
+        <div style={errorStyle}>
+          {error}
+        </div>
+      )}
 
-      {success && <div style={successStyle}>{success}</div>}
+      {success && (
+        <div style={successStyle}>
+          {success}
+        </div>
+      )}
 
       <div style={contentGridStyle}>
         <div>
@@ -605,7 +629,10 @@ export default function Recipes() {
                   type="text"
                   value={form.name}
                   onChange={(event) =>
-                    updateForm("name", event.target.value)
+                    updateForm(
+                      "name",
+                      event.target.value
+                    )
                   }
                   placeholder="np. Tort czekoladowy"
                   disabled={saving}
@@ -615,13 +642,18 @@ export default function Recipes() {
               </label>
 
               <label style={labelStyle}>
-                <span style={labelTextStyle}>Kategoria</span>
+                <span style={labelTextStyle}>
+                  Kategoria
+                </span>
 
                 <input
                   type="text"
                   value={form.category}
                   onChange={(event) =>
-                    updateForm("category", event.target.value)
+                    updateForm(
+                      "category",
+                      event.target.value
+                    )
                   }
                   placeholder="np. Torty klasyczne"
                   disabled={saving}
@@ -630,7 +662,9 @@ export default function Recipes() {
               </label>
 
               <label style={labelStyle}>
-                <span style={labelTextStyle}>Opis</span>
+                <span style={labelTextStyle}>
+                  Opis
+                </span>
 
                 <textarea
                   value={form.description}
@@ -690,7 +724,9 @@ export default function Recipes() {
                       style={unitInputStyle}
                     />
 
-                    <span style={unitStyle}>cm</span>
+                    <span style={unitStyle}>
+                      cm
+                    </span>
                   </div>
                 </label>
 
@@ -715,7 +751,9 @@ export default function Recipes() {
                       style={unitInputStyle}
                     />
 
-                    <span style={unitStyle}>cm</span>
+                    <span style={unitStyle}>
+                      cm
+                    </span>
                   </div>
                 </label>
               </div>
@@ -768,6 +806,10 @@ export default function Recipes() {
                     {selectedRecipe.name}
                   </p>
                 </div>
+
+                <div style={costBadgeStyle}>
+                  Koszt: {ingredientCost.toFixed(2).replace(".", ",")} zł
+                </div>
               </div>
 
               <form onSubmit={addIngredient}>
@@ -779,16 +821,21 @@ export default function Recipes() {
                   <select
                     value={ingredientForm.productId}
                     onChange={(event) => {
-                      const productId = event.target.value;
+                      const productId =
+                        event.target.value;
+
                       const product = products.find(
-                        (item) => item.id === productId
+                        (item) =>
+                          item.id === productId
                       );
 
                       setIngredientForm({
                         productId,
                         quantity:
                           ingredientForm.quantity,
-                        unit: product?.unit ?? "",
+                        unit:
+                          product?.unit ??
+                          ingredientForm.unit,
                       });
                     }}
                     disabled={savingIngredient}
@@ -803,7 +850,8 @@ export default function Recipes() {
                         key={product.id}
                         value={product.id}
                       >
-                        {product.name} ({product.unit})
+                        {product.name} —{" "}
+                        {product.unit}
                       </option>
                     ))}
                   </select>
@@ -818,14 +866,16 @@ export default function Recipes() {
                     <input
                       type="text"
                       inputMode="decimal"
-                      value={ingredientForm.quantity}
+                      value={
+                        ingredientForm.quantity
+                      }
                       onChange={(event) =>
                         updateIngredientForm(
                           "quantity",
                           event.target.value
                         )
                       }
-                      placeholder="np. 250"
+                      placeholder="np. 500"
                       disabled={savingIngredient}
                       style={inputStyle}
                     />
@@ -845,7 +895,7 @@ export default function Recipes() {
                           event.target.value
                         )
                       }
-                      placeholder="g / ml / szt."
+                      placeholder="np. g"
                       disabled={savingIngredient}
                       style={inputStyle}
                     />
@@ -856,8 +906,10 @@ export default function Recipes() {
                   type="submit"
                   disabled={savingIngredient}
                   style={{
-                    ...buttonStyle,
-                    opacity: savingIngredient ? 0.7 : 1,
+                    ...secondaryButtonStyle,
+                    opacity: savingIngredient
+                      ? 0.7
+                      : 1,
                     cursor: savingIngredient
                       ? "not-allowed"
                       : "pointer",
@@ -869,41 +921,87 @@ export default function Recipes() {
                 </button>
               </form>
 
-              <div style={ingredientListStyle}>
+              <div style={ingredientsListStyle}>
                 {ingredients.length === 0 ? (
                   <div style={noIngredientsStyle}>
-                    Brak składników w tej recepturze.
+                    Brak składników. Dodaj pierwszy
+                    składnik powyżej.
                   </div>
                 ) : (
-                  ingredients.map((ingredient) => (
-                    <div
-                      key={ingredient.id}
-                      style={ingredientRowStyle}
-                    >
-                      <div>
-                        <strong>
-                          {getProductName(
-                            ingredient.product_id
-                          )}
-                        </strong>
+                  ingredients.map((ingredient) => {
+                    const product = products.find(
+                      (item) =>
+                        item.id ===
+                        ingredient.product_id
+                    );
 
-                        <div style={ingredientMetaStyle}>
-                          {ingredient.quantity}{" "}
-                          {ingredient.unit}
+                    const itemCost =
+                      product &&
+                      product.package_quantity
+                        ? (Number(
+                            ingredient.quantity
+                          ) /
+                            Number(
+                              product.package_quantity
+                            )) *
+                          Number(
+                            product.package_price
+                          )
+                        : 0;
+
+                    return (
+                      <div
+                        key={ingredient.id}
+                        style={ingredientRowStyle}
+                      >
+                        <div>
+                          <strong>
+                            {product?.name ??
+                              "Nieznany produkt"}
+                          </strong>
+
+                          <div
+                            style={
+                              ingredientMetaStyle
+                            }
+                          >
+                            {ingredient.quantity}{" "}
+                            {ingredient.unit}
+                          </div>
+                        </div>
+
+                        <div
+                          style={
+                            ingredientActionsStyle
+                          }
+                        >
+                          <strong>
+                            {itemCost
+                              .toFixed(2)
+                              .replace(
+                                ".",
+                                ","
+                              )}{" "}
+                            zł
+                          </strong>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              deleteIngredient(
+                                ingredient
+                              )
+                            }
+                            style={
+                              smallDeleteButtonStyle
+                            }
+                          >
+                            Usuń
+                          </button>
                         </div>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          deleteIngredient(ingredient)
-                        }
-                        style={deleteSmallButtonStyle}
-                      >
-                        Usuń
-                      </button>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -918,13 +1016,14 @@ export default function Recipes() {
               </h3>
 
               <p style={cardSubtitleStyle}>
-                Receptury zapisane w bazie Supabase.
+                Kliknij recepturę, aby zobaczyć jej
+                składniki.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={loadRecipes}
+              onClick={loadAll}
               disabled={loading}
               style={refreshButtonStyle}
             >
@@ -938,12 +1037,15 @@ export default function Recipes() {
             </div>
           ) : recipes.length === 0 ? (
             <div style={emptyStyle}>
-              <div style={emptyIconStyle}>R</div>
+              <div style={emptyIconStyle}>
+                R
+              </div>
 
               <strong>Brak receptur</strong>
 
               <p style={emptyTextStyle}>
-                Dodaj pierwszą recepturę za pomocą formularza.
+                Dodaj pierwszą recepturę za pomocą
+                formularza.
               </p>
             </div>
           ) : (
@@ -953,7 +1055,8 @@ export default function Recipes() {
                   key={recipe.id}
                   style={{
                     ...recipeRowStyle,
-                    ...(selectedRecipeId === recipe.id
+                    ...(selectedRecipeId ===
+                    recipe.id
                       ? selectedRecipeRowStyle
                       : {}),
                   }}
@@ -966,18 +1069,24 @@ export default function Recipes() {
                     style={recipeSelectButtonStyle}
                   >
                     <div style={recipeMainStyle}>
-                      <div style={recipeIconStyle}>
+                      <div
+                        style={recipeIconStyle}
+                      >
                         {recipe.name
                           .charAt(0)
                           .toUpperCase()}
                       </div>
 
                       <div>
-                        <div style={recipeNameStyle}>
+                        <div
+                          style={recipeNameStyle}
+                        >
                           {recipe.name}
                         </div>
 
-                        <div style={recipeMetaStyle}>
+                        <div
+                          style={recipeMetaStyle}
+                        >
                           {recipe.category ||
                             "Bez kategorii"}
 
@@ -991,7 +1100,11 @@ export default function Recipes() {
 
                   <div style={recipeDetailsStyle}>
                     <div>
-                      <span style={detailLabelStyle}>
+                      <span
+                        style={
+                          detailLabelStyle
+                        }
+                      >
                         Porcje
                       </span>
 
@@ -1001,7 +1114,11 @@ export default function Recipes() {
                     </div>
 
                     <div>
-                      <span style={detailLabelStyle}>
+                      <span
+                        style={
+                          detailLabelStyle
+                        }
+                      >
                         Rozmiar
                       </span>
 
@@ -1013,7 +1130,11 @@ export default function Recipes() {
                     </div>
 
                     <div>
-                      <span style={detailLabelStyle}>
+                      <span
+                        style={
+                          detailLabelStyle
+                        }
+                      >
                         Wysokość
                       </span>
 
@@ -1025,7 +1146,11 @@ export default function Recipes() {
                     </div>
 
                     <div>
-                      <span style={detailLabelStyle}>
+                      <span
+                        style={
+                          detailLabelStyle
+                        }
+                      >
                         Status
                       </span>
 
@@ -1138,11 +1263,7 @@ const formCardStyle = {
 };
 
 const ingredientsCardStyle = {
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "18px",
-  padding: "24px",
-  boxSizing: "border-box" as const,
+  ...formCardStyle,
   marginTop: "20px",
 };
 
@@ -1252,6 +1373,18 @@ const buttonStyle = {
   fontWeight: 600,
 };
 
+const secondaryButtonStyle = {
+  width: "100%",
+  border: "none",
+  borderRadius: "10px",
+  padding: "11px 15px",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  fontSize: "14px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
 const cancelButtonStyle = {
   border: "1px solid #ddd3c9",
   background: "#ffffff",
@@ -1270,6 +1403,16 @@ const refreshButtonStyle = {
   padding: "8px 12px",
   cursor: "pointer",
   fontSize: "12px",
+};
+
+const costBadgeStyle = {
+  background: "#f0f8f2",
+  color: "#477451",
+  borderRadius: "20px",
+  padding: "8px 12px",
+  fontSize: "12px",
+  fontWeight: 700,
+  whiteSpace: "nowrap" as const,
 };
 
 const errorStyle = {
@@ -1340,8 +1483,8 @@ const recipeRowStyle = {
 };
 
 const selectedRecipeRowStyle = {
-  border: "1px solid #cdb9a5",
-  background: "#fdfaf7",
+  border: "1px solid #d8c8b8",
+  background: "#fcfaf8",
 };
 
 const recipeSelectButtonStyle = {
@@ -1455,39 +1598,37 @@ const deleteButtonStyle = {
   fontWeight: 600,
 };
 
-const ingredientListStyle = {
-  marginTop: "22px",
+const ingredientsListStyle = {
   display: "flex",
   flexDirection: "column" as const,
-  gap: "8px",
+  gap: "9px",
+  marginTop: "20px",
 };
 
 const ingredientRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "12px",
   border: "1px solid #eee7e0",
   borderRadius: "10px",
-  padding: "11px 12px",
+  padding: "12px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "15px",
 };
 
 const ingredientMetaStyle = {
-  marginTop: "3px",
+  marginTop: "4px",
   color: "#8a837d",
   fontSize: "12px",
 };
 
-const noIngredientsStyle = {
-  border: "1px dashed #ddd3c9",
-  borderRadius: "10px",
-  padding: "18px",
-  textAlign: "center" as const,
-  color: "#8a837d",
-  fontSize: "13px",
+const ingredientActionsStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  whiteSpace: "nowrap" as const,
 };
 
-const deleteSmallButtonStyle = {
+const smallDeleteButtonStyle = {
   border: "1px solid #e3c1bd",
   background: "#fff8f7",
   color: "#a34f46",
@@ -1495,4 +1636,14 @@ const deleteSmallButtonStyle = {
   padding: "6px 9px",
   cursor: "pointer",
   fontSize: "11px",
+};
+
+const noIngredientsStyle = {
+  background: "#faf8f5",
+  border: "1px dashed #ddd3c9",
+  borderRadius: "10px",
+  padding: "18px",
+  textAlign: "center" as const,
+  color: "#8a837d",
+  fontSize: "13px",
 };
