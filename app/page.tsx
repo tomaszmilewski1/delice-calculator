@@ -11,6 +11,7 @@ export default function Home() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [error, setError] = useState("");
+  const [debugInfo, setDebugInfo] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -18,10 +19,17 @@ export default function Home() {
     async function checkSession() {
       const {
         data: { session },
+        error: sessionError,
       } = await supabase.auth.getSession();
 
       if (!mounted) {
         return;
+      }
+
+      if (sessionError) {
+        setDebugInfo(
+          `Błąd sprawdzania sesji: ${sessionError.message}`
+        );
       }
 
       setLoggedIn(!!session);
@@ -32,14 +40,16 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) {
-        return;
-      }
+    } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!mounted) {
+          return;
+        }
 
-      setLoggedIn(!!session);
-      setLoading(false);
-    });
+        setLoggedIn(!!session);
+        setLoading(false);
+      }
+    );
 
     return () => {
       mounted = false;
@@ -47,10 +57,13 @@ export default function Home() {
     };
   }, []);
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     setError("");
+    setDebugInfo("");
 
     const cleanEmail = email.trim();
 
@@ -61,36 +74,111 @@ export default function Home() {
 
     setLoggingIn(true);
 
-    const { error: loginError } =
-      await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+    try {
+      const { data, error: loginError } =
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
 
-    if (loginError) {
-      setError("Nie udało się zalogować. Sprawdź dane i spróbuj ponownie.");
+      console.log("SUPABASE LOGIN DATA:", data);
+      console.log("SUPABASE LOGIN ERROR:", loginError);
+
+      if (loginError) {
+        setError(
+          "Supabase zwrócił błąd podczas logowania."
+        );
+
+        setDebugInfo(
+          [
+            `message: ${loginError.message}`,
+            `status: ${loginError.status ?? "brak"}`,
+            `name: ${loginError.name ?? "brak"}`,
+          ].join("\n")
+        );
+
+        setLoggingIn(false);
+        return;
+      }
+
+      if (!data.session) {
+        setError(
+          "Logowanie zostało wykonane, ale Supabase nie zwrócił sesji."
+        );
+
+        setDebugInfo(
+          "signInWithPassword zakończyło się bez błędu, ale session = null."
+        );
+
+        setLoggingIn(false);
+        return;
+      }
+
+      console.log(
+        "ZALOGOWANO UID:",
+        data.user?.id
+      );
+
+      setLoggedIn(true);
+      setPassword("");
+      setError("");
+      setDebugInfo("");
+
       setLoggingIn(false);
-      return;
-    }
+    } catch (unknownError) {
+      console.error(
+        "NIEOCZEKIWANY BŁĄD LOGOWANIA:",
+        unknownError
+      );
 
-    setPassword("");
-    setLoggingIn(false);
+      if (unknownError instanceof Error) {
+        setError(
+          "Wystąpił nieoczekiwany błąd logowania."
+        );
+
+        setDebugInfo(
+          `${unknownError.name}: ${unknownError.message}`
+        );
+      } else {
+        setError(
+          "Wystąpił nieoczekiwany błąd logowania."
+        );
+
+        setDebugInfo(
+          String(unknownError)
+        );
+      }
+
+      setLoggingIn(false);
+    }
   }
 
   async function handleLogout() {
-    await supabase.auth.signOut();
+    setError("");
+    setDebugInfo("");
+
+    const { error: logoutError } =
+      await supabase.auth.signOut();
+
+    if (logoutError) {
+      setError(
+        `Błąd wylogowania: ${logoutError.message}`
+      );
+      return;
+    }
 
     setLoggedIn(false);
     setEmail("");
     setPassword("");
-    setError("");
   }
 
   if (loading) {
     return (
       <main style={pageStyle}>
         <div style={loadingBoxStyle}>
-          <div style={brandStyle}>Délice</div>
+          <div style={brandStyle}>
+            Délice
+          </div>
 
           <h1 style={titleStyle}>
             Kalkulator tortów
@@ -109,7 +197,9 @@ export default function Home() {
       <main style={loginPageStyle}>
         <div style={loginBoxStyle}>
           <div style={loginHeaderStyle}>
-            <div style={brandStyle}>Délice</div>
+            <div style={brandStyle}>
+              Délice
+            </div>
 
             <h1 style={loginTitleStyle}>
               Kalkulator tortów
@@ -163,6 +253,12 @@ export default function Home() {
               <div style={errorStyle}>
                 {error}
               </div>
+            )}
+
+            {debugInfo && (
+              <pre style={debugStyle}>
+                {debugInfo}
+              </pre>
             )}
 
             <button
@@ -343,9 +439,22 @@ const errorStyle = {
   color: "#9b4d43",
   borderRadius: "9px",
   padding: "12px",
-  marginBottom: "18px",
+  marginBottom: "12px",
   fontSize: "14px",
   lineHeight: 1.5,
+};
+
+const debugStyle = {
+  background: "#f5f5f5",
+  border: "1px solid #ddd3c9",
+  color: "#292522",
+  borderRadius: "9px",
+  padding: "12px",
+  marginBottom: "18px",
+  fontSize: "12px",
+  lineHeight: 1.5,
+  whiteSpace: "pre-wrap" as const,
+  overflowX: "auto" as const,
 };
 
 const loginFooterStyle = {
