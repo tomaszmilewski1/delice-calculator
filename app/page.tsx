@@ -46,6 +46,44 @@ export default function Home() {
   }, []);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  setError("");
+  setLoggingIn(true);
+
+  const cleanEmail = email.trim();
+
+  if (!cleanEmail || !password) {
+    setError("Wpisz e-mail i hasło.");
+    setLoggingIn(false);
+    return;
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: cleanEmail,
+    password,
+  });
+
+  console.log("SUPABASE LOGIN DATA:", data);
+  console.log("SUPABASE LOGIN ERROR:", error);
+
+  if (error) {
+    setError(
+      `Supabase: ${error.message}`
+    );
+    setLoggingIn(false);
+    return;
+  }
+
+  if (!data.session) {
+    setError("Logowanie nie utworzyło sesji.");
+    setLoggingIn(false);
+    return;
+  }
+
+  setPassword("");
+  setLoggingIn(false);
+}
     event.preventDefault();
 
     setError("");
