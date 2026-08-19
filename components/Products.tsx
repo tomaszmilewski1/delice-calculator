@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../folder/lib/supabase";
-
+import { supabase } from "../lib/supabase";
 type Product = {
   id: string;
   name: string;
