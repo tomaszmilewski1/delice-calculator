@@ -16,18 +16,33 @@ type Product = {
   updated_at: string;
 };
 
+type ProductForm = {
+  name: string;
+  category: string;
+  unit: string;
+  packageQuantity: string;
+  packagePrice: string;
+  notes: string;
+  active: boolean;
+};
+
+const emptyForm: ProductForm = {
+  name: "",
+  category: "",
+  unit: "",
+  packageQuantity: "",
+  packagePrice: "",
+  notes: "",
+  active: true,
+};
+
 export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
-  const [unit, setUnit] = useState("");
-  const [packageQuantity, setPackageQuantity] = useState("");
-  const [packagePrice, setPackagePrice] = useState("");
-  const [notes, setNotes] = useState("");
-  const [active, setActive] = useState(true);
+  const [form, setForm] = useState<ProductForm>(emptyForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -57,13 +72,58 @@ export default function Products() {
     setLoading(false);
   }
 
+  function updateForm(
+    field: keyof ProductForm,
+    value: string | boolean
+  ) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function startEditing(product: Product) {
+    setEditingId(product.id);
+
+    setForm({
+      name: product.name ?? "",
+      category: product.category ?? "",
+      unit: product.unit ?? "",
+      packageQuantity:
+        product.package_quantity !== null
+          ? String(product.package_quantity).replace(".", ",")
+          : "",
+      packagePrice:
+        product.package_price !== null
+          ? String(product.package_price).replace(".", ",")
+          : "",
+      notes: product.notes ?? "",
+      active: product.active,
+    });
+
+    setError("");
+    setSuccess("");
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError("");
+    setSuccess("");
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setError("");
     setSuccess("");
 
-    const cleanName = name.trim();
+    const cleanName = form.name.trim();
 
     if (!cleanName) {
       setError("Podaj nazwę produktu.");
@@ -71,14 +131,14 @@ export default function Products() {
     }
 
     const quantityValue =
-      packageQuantity.trim() === ""
+      form.packageQuantity.trim() === ""
         ? null
-        : Number(packageQuantity.replace(",", "."));
+        : Number(form.packageQuantity.replace(",", "."));
 
     const priceValue =
-      packagePrice.trim() === ""
+      form.packagePrice.trim() === ""
         ? null
-        : Number(packagePrice.replace(",", "."));
+        : Number(form.packagePrice.replace(",", "."));
 
     if (
       quantityValue !== null &&
@@ -96,41 +156,124 @@ export default function Products() {
       return;
     }
 
+    const productData = {
+      name: cleanName,
+      category: form.category.trim() || null,
+      unit: form.unit.trim() || null,
+      package_quantity: quantityValue,
+      package_price: priceValue,
+      notes: form.notes.trim() || null,
+      active: form.active,
+    };
+
     setSaving(true);
 
-    const { error: insertError } = await supabase
-      .from("products")
-      .insert({
-        name: cleanName,
-        category: category.trim() || null,
-        unit: unit.trim() || null,
-        package_quantity: quantityValue,
-        package_price: priceValue,
-        notes: notes.trim() || null,
-        active,
-      });
+    if (editingId) {
+      const { error: updateError } = await supabase
+        .from("products")
+        .update(productData)
+        .eq("id", editingId);
 
-    if (insertError) {
-      setError(
-        `Nie udało się zapisać produktu: ${insertError.message}`
-      );
-      setSaving(false);
-      return;
+      if (updateError) {
+        setError(
+          `Nie udało się zaktualizować produktu: ${updateError.message}`
+        );
+        setSaving(false);
+        return;
+      }
+
+      setSuccess("Produkt został zaktualizowany.");
+    } else {
+      const { error: insertError } = await supabase
+        .from("products")
+        .insert(productData);
+
+      if (insertError) {
+        setError(
+          `Nie udało się zapisać produktu: ${insertError.message}`
+        );
+        setSaving(false);
+        return;
+      }
+
+      setSuccess("Produkt został dodany.");
     }
 
-    setName("");
-    setCategory("");
-    setUnit("");
-    setPackageQuantity("");
-    setPackagePrice("");
-    setNotes("");
-    setActive(true);
-
-    setSuccess("Produkt został dodany.");
+    setForm(emptyForm);
+    setEditingId(null);
 
     await loadProducts();
 
     setSaving(false);
+  }
+
+  async function deleteProduct(product: Product) {
+    const confirmed = window.confirm(
+      `Czy na pewno chcesz usunąć produkt "${product.name}"?\n\nTej operacji nie można cofnąć.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    const { error: deleteError } = await supabase
+      .from("products")
+      .delete()
+      .eq("id", product.id);
+
+    if (deleteError) {
+      setError(
+        `Nie udało się usunąć produktu: ${deleteError.message}`
+      );
+      return;
+    }
+
+    if (editingId === product.id) {
+      cancelEditing();
+    }
+
+    setSuccess(`Produkt "${product.name}" został usunięty.`);
+
+    await loadProducts();
+  }
+
+  async function toggleActive(product: Product) {
+    setError("");
+    setSuccess("");
+
+    const { error: updateError } = await supabase
+      .from("products")
+      .update({
+        active: !product.active,
+      })
+      .eq("id", product.id);
+
+    if (updateError) {
+      setError(
+        `Nie udało się zmienić statusu produktu: ${updateError.message}`
+      );
+      return;
+    }
+
+    setProducts((current) =>
+      current.map((item) =>
+        item.id === product.id
+          ? {
+              ...item,
+              active: !item.active,
+            }
+          : item
+      )
+    );
+
+    setSuccess(
+      product.active
+        ? `Produkt "${product.name}" został wyłączony.`
+        : `Produkt "${product.name}" został aktywowany.`
+    );
   }
 
   function formatPrice(value: number | null) {
@@ -138,7 +281,9 @@ export default function Products() {
       return "—";
     }
 
-    return `${Number(value).toFixed(2).replace(".", ",")} zł`;
+    return `${Number(value)
+      .toFixed(2)
+      .replace(".", ",")} zł`;
   }
 
   function formatQuantity(value: number | null) {
@@ -171,8 +316,7 @@ export default function Products() {
           {products.length}{" "}
           {products.length === 1
             ? "produkt"
-            : products.length >= 2 &&
-              products.length <= 4
+            : products.length >= 2 && products.length <= 4
             ? "produkty"
             : "produktów"}
         </div>
@@ -183,14 +327,27 @@ export default function Products() {
           <div style={cardHeaderStyle}>
             <div>
               <h3 style={cardTitleStyle}>
-                Dodaj produkt
+                {editingId
+                  ? "Edytuj produkt"
+                  : "Dodaj produkt"}
               </h3>
 
               <p style={cardSubtitleStyle}>
-                Produkt zostanie zapisany bezpośrednio
-                w Supabase.
+                {editingId
+                  ? "Zmień dane produktu i zapisz zmiany."
+                  : "Produkt zostanie zapisany bezpośrednio w Supabase."}
               </p>
             </div>
+
+            {editingId && (
+              <button
+                type="button"
+                onClick={cancelEditing}
+                style={cancelButtonStyle}
+              >
+                Anuluj
+              </button>
+            )}
           </div>
 
           <form onSubmit={handleSubmit}>
@@ -201,9 +358,9 @@ export default function Products() {
 
               <input
                 type="text"
-                value={name}
+                value={form.name}
                 onChange={(event) =>
-                  setName(event.target.value)
+                  updateForm("name", event.target.value)
                 }
                 placeholder="np. Mąka pszenna"
                 disabled={saving}
@@ -218,9 +375,9 @@ export default function Products() {
 
               <input
                 type="text"
-                value={category}
+                value={form.category}
                 onChange={(event) =>
-                  setCategory(event.target.value)
+                  updateForm("category", event.target.value)
                 }
                 placeholder="np. Produkty sypkie"
                 disabled={saving}
@@ -236,9 +393,9 @@ export default function Products() {
 
                 <input
                   type="text"
-                  value={unit}
+                  value={form.unit}
                   onChange={(event) =>
-                    setUnit(event.target.value)
+                    updateForm("unit", event.target.value)
                   }
                   placeholder="kg, g, szt."
                   disabled={saving}
@@ -254,9 +411,10 @@ export default function Products() {
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={packageQuantity}
+                  value={form.packageQuantity}
                   onChange={(event) =>
-                    setPackageQuantity(
+                    updateForm(
+                      "packageQuantity",
                       event.target.value
                     )
                   }
@@ -276,9 +434,10 @@ export default function Products() {
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={packagePrice}
+                  value={form.packagePrice}
                   onChange={(event) =>
-                    setPackagePrice(
+                    updateForm(
+                      "packagePrice",
                       event.target.value
                     )
                   }
@@ -299,9 +458,9 @@ export default function Products() {
               </span>
 
               <textarea
-                value={notes}
+                value={form.notes}
                 onChange={(event) =>
-                  setNotes(event.target.value)
+                  updateForm("notes", event.target.value)
                 }
                 placeholder="Opcjonalne informacje"
                 disabled={saving}
@@ -313,9 +472,12 @@ export default function Products() {
             <label style={checkboxLabelStyle}>
               <input
                 type="checkbox"
-                checked={active}
+                checked={form.active}
                 onChange={(event) =>
-                  setActive(event.target.checked)
+                  updateForm(
+                    "active",
+                    event.target.checked
+                  )
                 }
                 disabled={saving}
               />
@@ -350,6 +512,8 @@ export default function Products() {
             >
               {saving
                 ? "Zapisywanie..."
+                : editingId
+                ? "Zapisz zmiany"
                 : "+ Dodaj produkt"}
             </button>
           </form>
@@ -392,8 +556,7 @@ export default function Products() {
               </strong>
 
               <p style={emptyTextStyle}>
-                Dodaj pierwszy produkt za pomocą
-                formularza.
+                Dodaj pierwszy produkt za pomocą formularza.
               </p>
             </div>
           ) : (
@@ -457,7 +620,11 @@ export default function Products() {
                         Status
                       </span>
 
-                      <span
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleActive(product)
+                        }
                         style={{
                           ...statusStyle,
                           ...(product.active
@@ -468,8 +635,30 @@ export default function Products() {
                         {product.active
                           ? "Aktywny"
                           : "Nieaktywny"}
-                      </span>
+                      </button>
                     </div>
+                  </div>
+
+                  <div style={actionsStyle}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        startEditing(product)
+                      }
+                      style={editButtonStyle}
+                    >
+                      Edytuj
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        deleteProduct(product)
+                      }
+                      style={deleteButtonStyle}
+                    >
+                      Usuń
+                    </button>
                   </div>
                 </div>
               ))}
@@ -645,6 +834,16 @@ const buttonStyle = {
   fontWeight: 600,
 };
 
+const cancelButtonStyle = {
+  border: "1px solid #ddd3c9",
+  background: "#ffffff",
+  color: "#716b65",
+  borderRadius: "9px",
+  padding: "8px 11px",
+  cursor: "pointer",
+  fontSize: "12px",
+};
+
 const refreshButtonStyle = {
   border: "1px solid #ddd3c9",
   background: "#ffffff",
@@ -771,11 +970,12 @@ const detailLabelStyle = {
 };
 
 const statusStyle = {
-  display: "inline-block",
+  border: "none",
   borderRadius: "20px",
   padding: "4px 8px",
   fontSize: "11px",
   fontWeight: 600,
+  cursor: "pointer",
 };
 
 const activeStatusStyle = {
@@ -786,4 +986,32 @@ const activeStatusStyle = {
 const inactiveStatusStyle = {
   background: "#f3f1ef",
   color: "#817a74",
+};
+
+const actionsStyle = {
+  display: "flex",
+  gap: "8px",
+  marginLeft: "auto",
+};
+
+const editButtonStyle = {
+  border: "1px solid #d8c8b8",
+  background: "#ffffff",
+  color: "#8a6d4b",
+  borderRadius: "8px",
+  padding: "8px 12px",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: 600,
+};
+
+const deleteButtonStyle = {
+  border: "1px solid #e3c1bd",
+  background: "#fff8f7",
+  color: "#a34f46",
+  borderRadius: "8px",
+  padding: "8px 12px",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: 600,
 };
