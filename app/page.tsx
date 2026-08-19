@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Products from "./components/Products";
 
 type Ingredient = {
   id: number;
@@ -35,7 +36,9 @@ const initialIngredients: Ingredient[] = [
 ];
 
 export default function Home() {
-  const [view, setView] = useState<"dashboard" | "newCake">("dashboard");
+  const [view, setView] = useState<
+    "dashboard" | "newCake" | "products"
+  >("dashboard");
 
   const [cakeName, setCakeName] = useState("");
   const [diameter, setDiameter] = useState("");
@@ -50,7 +53,9 @@ export default function Home() {
     }, 0);
   }, [ingredients]);
 
-  const sellingPrice = totalCost * (1 + Number(margin || 0) / 100);
+  const sellingPrice =
+    totalCost * (1 + Number(margin || 0) / 100);
+
   const profit = sellingPrice - totalCost;
 
   function updateIngredient(
@@ -93,6 +98,44 @@ export default function Home() {
   function removeIngredient(id: number) {
     setIngredients((current) =>
       current.filter((ingredient) => ingredient.id !== id)
+    );
+  }
+
+  if (view === "products") {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          background: "#faf8f5",
+          color: "#292522",
+          fontFamily: "Arial, sans-serif",
+          padding: "30px 20px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: "1100px",
+            margin: "0 auto",
+          }}
+        >
+          <button
+            onClick={() => setView("dashboard")}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "#8a6d4b",
+              cursor: "pointer",
+              fontSize: "15px",
+              padding: 0,
+              marginBottom: "25px",
+            }}
+          >
+            ← Powrót do panelu
+          </button>
+
+          <Products />
+        </div>
+      </main>
     );
   }
 
@@ -156,7 +199,8 @@ export default function Home() {
                 fontSize: "16px",
               }}
             >
-              Oblicz koszt wykonania tortu i sugerowaną cenę sprzedaży.
+              Oblicz koszt wykonania tortu i sugerowaną cenę
+              sprzedaży.
             </p>
           </header>
 
@@ -169,7 +213,9 @@ export default function Home() {
               marginBottom: "20px",
             }}
           >
-            <h2 style={{ marginTop: 0 }}>Informacje o torcie</h2>
+            <h2 style={{ marginTop: 0 }}>
+              Informacje o torcie
+            </h2>
 
             <div
               style={{
@@ -260,7 +306,9 @@ export default function Home() {
                     <th style={thStyle}>Składnik</th>
                     <th style={thStyle}>Ilość</th>
                     <th style={thStyle}>Jednostka</th>
-                    <th style={thStyle}>Cena / jednostkę</th>
+                    <th style={thStyle}>
+                      Cena / jednostkę
+                    </th>
                     <th style={thStyle}>Koszt</th>
                     <th style={thStyle}></th>
                   </tr>
@@ -343,14 +391,19 @@ export default function Home() {
 
                         <td style={tdStyle}>
                           <strong>
-                            {cost.toFixed(2).replace(".", ",")} zł
+                            {cost
+                              .toFixed(2)
+                              .replace(".", ",")}{" "}
+                            zł
                           </strong>
                         </td>
 
                         <td style={tdStyle}>
                           <button
                             onClick={() =>
-                              removeIngredient(ingredient.id)
+                              removeIngredient(
+                                ingredient.id
+                              )
                             }
                             style={{
                               border: "none",
@@ -380,17 +433,23 @@ export default function Home() {
           >
             <ResultCard
               title="Koszt składników"
-              value={`${totalCost.toFixed(2).replace(".", ",")} zł`}
+              value={`${totalCost
+                .toFixed(2)
+                .replace(".", ",")} zł`}
             />
 
             <ResultCard
               title="Zysk"
-              value={`${profit.toFixed(2).replace(".", ",")} zł`}
+              value={`${profit
+                .toFixed(2)
+                .replace(".", ",")} zł`}
             />
 
             <ResultCard
               title="Sugerowana cena"
-              value={`${sellingPrice.toFixed(2).replace(".", ",")} zł`}
+              value={`${sellingPrice
+                .toFixed(2)
+                .replace(".", ",")} zł`}
               highlighted
             />
           </section>
@@ -404,7 +463,9 @@ export default function Home() {
               marginTop: "20px",
             }}
           >
-            <h2 style={{ marginTop: 0 }}>Podsumowanie tortu</h2>
+            <h2 style={{ marginTop: 0 }}>
+              Podsumowanie tortu
+            </h2>
 
             <p>
               <strong>Nazwa:</strong>{" "}
@@ -413,7 +474,9 @@ export default function Home() {
 
             <p>
               <strong>Średnica:</strong>{" "}
-              {diameter ? `${diameter} cm` : "Nie podano"}
+              {diameter
+                ? `${diameter} cm`
+                : "Nie podano"}
             </p>
 
             <p>
@@ -472,7 +535,8 @@ export default function Home() {
               marginTop: "12px",
             }}
           >
-            Zarządzaj recepturami, kosztami i zamówieniami w jednym miejscu.
+            Zarządzaj recepturami, kosztami i zamówieniami
+            w jednym miejscu.
           </p>
         </header>
 
@@ -493,6 +557,7 @@ export default function Home() {
           <DashboardCard
             title="Produkty"
             description="Zarządzaj produktami i ich aktualnymi cenami."
+            onClick={() => setView("products")}
           />
 
           <DashboardCard
@@ -515,7 +580,9 @@ export default function Home() {
             border: "1px solid #e9e2da",
           }}
         >
-          <h2 style={{ marginTop: 0 }}>Podsumowanie</h2>
+          <h2 style={{ marginTop: 0 }}>
+            Podsumowanie
+          </h2>
 
           <div
             style={{
@@ -651,7 +718,9 @@ function ResultCard({
         {title}
       </div>
 
-      <strong style={{ fontSize: "28px" }}>{value}</strong>
+      <strong style={{ fontSize: "28px" }}>
+        {value}
+      </strong>
     </div>
   );
 }
@@ -677,7 +746,9 @@ function Stat({
         {title}
       </div>
 
-      <strong style={{ fontSize: "26px" }}>{value}</strong>
+      <strong style={{ fontSize: "26px" }}>
+        {value}
+      </strong>
     </div>
   );
 }
