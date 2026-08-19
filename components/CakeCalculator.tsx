@@ -32,12 +32,10 @@ type RecipeIngredient = {
   unit: string;
 };
 
-type CalculatedIngredient = {
-  id: string;
-  name: string;
-  originalQuantity: number;
-  calculatedQuantity: number;
-  unit: string;
+type IngredientCalculation = {
+  ingredient: RecipeIngredient;
+  product: Product | null;
+  scaledQuantity: number;
   cost: number;
 };
 
@@ -207,8 +205,18 @@ function calculateCost(
   return 0;
 }
 
-function formatNumber(value: number) {
-  return value
+function formatNumber(
+  value: number | null | undefined
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(Number(value))
+  ) {
+    return "—";
+  }
+
+  return Number(value)
     .toFixed(2)
     .replace(".", ",");
 }
@@ -219,12 +227,29 @@ function formatMoney(value: number) {
     .replace(".", ",")} zł`;
 }
 
+function getPortionsLabel(value: number) {
+  if (value === 1) {
+    return "porcja";
+  }
+
+  if (
+    value >= 2 &&
+    value <= 4
+  ) {
+    return "porcje";
+  }
+
+  return "porcji";
+}
+
 export default function CakeCalculator() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [ingredients, setIngredients] = useState<
-    RecipeIngredient[]
-  >([]);
+  const [ingredients, setIngredients] =
+    useState<RecipeIngredient[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [selectedRecipeId, setSelectedRecipeId] =
     useState("");
@@ -232,9 +257,6 @@ export default function CakeCalculator() {
   const [diameter, setDiameter] = useState("");
   const [height, setHeight] = useState("");
   const [portions, setPortions] = useState("");
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     loadData();
@@ -291,41 +313,18 @@ export default function CakeCalculator() {
       );
     }
 
-    const loadedRecipes =
-      (recipesResult.data ?? []) as Recipe[];
+    setRecipes(
+      (recipesResult.data ?? []) as Recipe[]
+    );
 
-    setRecipes(loadedRecipes);
     setProducts(
       (productsResult.data ?? []) as Product[]
     );
+
     setIngredients(
       (ingredientsResult.data ??
         []) as RecipeIngredient[]
     );
-
-    if (loadedRecipes.length > 0) {
-      const firstRecipe = loadedRecipes[0];
-
-      setSelectedRecipeId(firstRecipe.id);
-
-      setDiameter(
-        firstRecipe.diameter_cm !== null
-          ? String(firstRecipe.diameter_cm)
-          : ""
-      );
-
-      setHeight(
-        firstRecipe.height_cm !== null
-          ? String(firstRecipe.height_cm)
-          : ""
-      );
-
-      setPortions(
-        firstRecipe.portions !== null
-          ? String(firstRecipe.portions)
-          : ""
-      );
-    }
 
     setLoading(false);
   }
@@ -339,212 +338,252 @@ export default function CakeCalculator() {
     );
   }, [recipes, selectedRecipeId]);
 
-  const selectedIngredients = useMemo(() => {
+  const recipeIngredients = useMemo(() => {
+    if (!selectedRecipeId) {
+      return [];
+    }
+
     return ingredients.filter(
       (ingredient) =>
         ingredient.recipe_id ===
         selectedRecipeId
     );
-  }, [ingredients, selectedRecipeId]);
+  }, [
+    ingredients,
+    selectedRecipeId,
+  ]);
 
-  function changeRecipe(recipeId: string) {
+  function getProduct(productId: string) {
+    return (
+      products.find(
+        (product) => product.id === productId
+      ) ?? null
+    );
+  }
+
+  function handleRecipeChange(
+    recipeId: string
+  ) {
+    setSelectedRecipeId(recipeId);
+    setError("");
+
     const recipe = recipes.find(
       (item) => item.id === recipeId
     );
 
     if (!recipe) {
+      setDiameter("");
+      setHeight("");
+      setPortions("");
       return;
     }
 
-    setSelectedRecipeId(recipeId);
-
     setDiameter(
       recipe.diameter_cm !== null
-        ? String(recipe.diameter_cm)
+        ? String(recipe.diameter_cm).replace(
+            ".",
+            ","
+          )
         : ""
     );
 
     setHeight(
       recipe.height_cm !== null
-        ? String(recipe.height_cm)
+        ? String(recipe.height_cm).replace(
+            ".",
+            ","
+          )
         : ""
     );
 
     setPortions(
       recipe.portions !== null
-        ? String(recipe.portions)
+        ? String(recipe.portions).replace(
+            ".",
+            ","
+          )
         : ""
     );
-
-    setError("");
   }
 
-  const calculatedIngredients =
-    useMemo<CalculatedIngredient[]>(() => {
-      if (!selectedRecipe) {
-        return [];
-      }
+  const baseDiameter =
+    selectedRecipe?.diameter_cm ?? null;
 
-      const baseDiameter =
-        Number(selectedRecipe.diameter_cm);
+  const baseHeight =
+    selectedRecipe?.height_cm ?? null;
 
-      const baseHeight =
-        Number(selectedRecipe.height_cm);
+  const basePortions =
+    selectedRecipe?.portions ?? null;
 
-      const basePortions =
-        Number(selectedRecipe.portions);
-
-      const currentDiameter =
-        Number(
+  const currentDiameter =
+    diameter.trim() === ""
+      ? baseDiameter
+      : Number(
           diameter.replace(",", ".")
         );
 
-      const currentHeight =
-        Number(
+  const currentHeight =
+    height.trim() === ""
+      ? baseHeight
+      : Number(
           height.replace(",", ".")
         );
 
-      const currentPortions =
-        Number(
+  const currentPortions =
+    portions.trim() === ""
+      ? basePortions
+      : Number(
           portions.replace(",", ".")
         );
 
-      /*
-       * Każdy wymiar traktujemy jako niezależny
-       * parametr skalowania.
-       *
-       * Średnica:
-       * pole przekroju rośnie według kwadratu
-       *
-       * Wysokość:
-       * liniowo
-       *
-       * Porcje:
-       * liniowo
-       *
-       * Jeżeli wszystkie trzy parametry są
-       * ustawione, najpierw liczymy zmianę
-       * wielkości tortu z wymiarów, a następnie
-       * uwzględniamy zmianę liczby porcji.
-       */
+  /*
+   * SKALOWANIE TORTU
+   *
+   * Dla tortu cylindrycznego:
+   *
+   * skala =
+   * (nowa średnica² × nowa wysokość)
+   * /
+   * (bazowa średnica² × bazowa wysokość)
+   *
+   * Dzięki temu receptura rośnie
+   * proporcjonalnie do rzeczywistej
+   * objętości tortu.
+   */
 
-      let scale = 1;
+  const dimensionScale = useMemo(() => {
+    if (
+      !baseDiameter ||
+      !baseHeight ||
+      !currentDiameter ||
+      !currentHeight ||
+      !Number.isFinite(baseDiameter) ||
+      !Number.isFinite(baseHeight) ||
+      !Number.isFinite(currentDiameter) ||
+      !Number.isFinite(currentHeight) ||
+      baseDiameter <= 0 ||
+      baseHeight <= 0 ||
+      currentDiameter <= 0 ||
+      currentHeight <= 0
+    ) {
+      return 1;
+    }
 
-      if (
-        Number.isFinite(baseDiameter) &&
-        baseDiameter > 0 &&
-        Number.isFinite(currentDiameter) &&
-        currentDiameter > 0
-      ) {
-        scale *=
-          Math.pow(
-            currentDiameter /
-              baseDiameter,
-            2
-          );
-      }
+    return (
+      (currentDiameter *
+        currentDiameter *
+        currentHeight) /
+      (baseDiameter *
+        baseDiameter *
+        baseHeight)
+    );
+  }, [
+    baseDiameter,
+    baseHeight,
+    currentDiameter,
+    currentHeight,
+  ]);
 
-      if (
-        Number.isFinite(baseHeight) &&
-        baseHeight > 0 &&
-        Number.isFinite(currentHeight) &&
-        currentHeight > 0
-      ) {
-        scale *=
-          currentHeight /
-          baseHeight;
-      }
+  /*
+   * Jeżeli użytkownik poda liczbę porcji,
+   * dodatkowo uwzględniamy ją w wyświetlaniu
+   * liczby porcji, ale składniki są skalowane
+   * według wymiarów tortu.
+   */
 
-      /*
-       * Liczba porcji jest dodatkowym parametrem.
-       * Jeżeli zmieniono porcje względem receptury,
-       * skaluje ilość proporcjonalnie.
-       */
-      if (
-        Number.isFinite(basePortions) &&
-        basePortions > 0 &&
-        Number.isFinite(currentPortions) &&
-        currentPortions > 0
-      ) {
-        scale *=
-          currentPortions /
-          basePortions;
-      }
-
-      return selectedIngredients.map(
+  const calculatedIngredients =
+    useMemo<IngredientCalculation[]>(() => {
+      return recipeIngredients.map(
         (ingredient) => {
-          const product = products.find(
-            (item) =>
-              item.id ===
-              ingredient.product_id
+          const product = getProduct(
+            ingredient.product_id
           );
 
-          if (!product) {
-            return {
-              id: ingredient.id,
-              name: "Nieznany produkt",
-              originalQuantity:
-                Number(ingredient.quantity),
-              calculatedQuantity:
-                Number(ingredient.quantity) *
-                scale,
-              unit: ingredient.unit,
-              cost: 0,
-            };
-          }
+          const scaledQuantity =
+            ingredient.quantity *
+            dimensionScale;
 
-          const originalQuantity =
-            Number(ingredient.quantity);
-
-          const calculatedQuantity =
-            originalQuantity * scale;
-
-          const cost = calculateCost(
-            calculatedQuantity,
-            ingredient.unit,
-            Number(
-              product.package_quantity
-            ),
-            product.unit,
-            Number(product.package_price)
-          );
+          const cost = product
+            ? calculateCost(
+                scaledQuantity,
+                ingredient.unit,
+                Number(
+                  product.package_quantity
+                ),
+                product.unit,
+                Number(
+                  product.package_price
+                )
+              )
+            : 0;
 
           return {
-            id: ingredient.id,
-            name: product.name,
-            originalQuantity,
-            calculatedQuantity,
-            unit: ingredient.unit,
+            ingredient,
+            product,
+            scaledQuantity,
             cost,
           };
         }
       );
     }, [
-      selectedRecipe,
-      selectedIngredients,
+      recipeIngredients,
       products,
-      diameter,
-      height,
-      portions,
+      dimensionScale,
     ]);
 
   const totalCost = useMemo(() => {
     return calculatedIngredients.reduce(
-      (sum, ingredient) =>
-        sum + ingredient.cost,
+      (sum, item) => sum + item.cost,
       0
     );
   }, [calculatedIngredients]);
 
-  const currentPortions = Number(
-    portions.replace(",", ".")
-  );
+  const calculatedPortions = useMemo(() => {
+    if (
+      currentPortions !== null &&
+      Number.isFinite(currentPortions) &&
+      currentPortions > 0 &&
+      basePortions &&
+      basePortions > 0
+    ) {
+      /*
+       * Przy ręcznie zmienionych wymiarach
+       * liczba porcji jest również skalowana
+       * według objętości.
+       */
+      if (portions.trim() !== "") {
+        return currentPortions;
+      }
+
+      return (
+        basePortions *
+        dimensionScale
+      );
+    }
+
+    return 0;
+  }, [
+    currentPortions,
+    basePortions,
+    dimensionScale,
+    portions,
+  ]);
 
   const costPerPortion =
-    Number.isFinite(currentPortions) &&
-    currentPortions > 0
-      ? totalCost / currentPortions
+    calculatedPortions > 0
+      ? totalCost / calculatedPortions
       : 0;
+
+  const hasValidDimensions =
+    !!selectedRecipe &&
+    !!baseDiameter &&
+    !!baseHeight &&
+    !!currentDiameter &&
+    !!currentHeight &&
+    Number.isFinite(currentDiameter) &&
+    Number.isFinite(currentHeight) &&
+    currentDiameter > 0 &&
+    currentHeight > 0;
 
   return (
     <section style={pageStyle}>
@@ -564,17 +603,6 @@ export default function CakeCalculator() {
             wyliczenie kosztu.
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={loadData}
-          disabled={loading}
-          style={refreshButtonStyle}
-        >
-          {loading
-            ? "Ładowanie..."
-            : "Odśwież"}
-        </button>
       </div>
 
       {error && (
@@ -606,7 +634,7 @@ export default function CakeCalculator() {
             <select
               value={selectedRecipeId}
               onChange={(event) =>
-                changeRecipe(
+                handleRecipeChange(
                   event.target.value
                 )
               }
@@ -636,7 +664,11 @@ export default function CakeCalculator() {
                     Średnica
                   </span>
 
-                  <div style={inputWithSuffixStyle}>
+                  <div
+                    style={
+                      inputWithUnitStyle
+                    }
+                  >
                     <input
                       type="text"
                       inputMode="decimal"
@@ -646,13 +678,14 @@ export default function CakeCalculator() {
                           event.target.value
                         )
                       }
-                      style={suffixInputStyle}
+                      placeholder="np. 21"
+                      style={
+                        unitInputStyle
+                      }
                     />
 
                     <span
-                      style={
-                        inputSuffixStyle
-                      }
+                      style={unitStyle}
                     >
                       cm
                     </span>
@@ -664,7 +697,11 @@ export default function CakeCalculator() {
                     Wysokość
                   </span>
 
-                  <div style={inputWithSuffixStyle}>
+                  <div
+                    style={
+                      inputWithUnitStyle
+                    }
+                  >
                     <input
                       type="text"
                       inputMode="decimal"
@@ -674,13 +711,14 @@ export default function CakeCalculator() {
                           event.target.value
                         )
                       }
-                      style={suffixInputStyle}
+                      placeholder="np. 10"
+                      style={
+                        unitInputStyle
+                      }
                     />
 
                     <span
-                      style={
-                        inputSuffixStyle
-                      }
+                      style={unitStyle}
                     >
                       cm
                     </span>
@@ -701,63 +739,87 @@ export default function CakeCalculator() {
                         event.target.value
                       )
                     }
+                    placeholder="np. 12"
                     style={inputStyle}
                   />
                 </label>
               </div>
 
               <div style={recipeInfoBoxStyle}>
-                <strong>
+                <div
+                  style={
+                    recipeInfoTitleStyle
+                  }
+                >
                   {selectedRecipe.name}
-                </strong>
+                </div>
 
-                {selectedRecipe.description && (
-                  <div style={descriptionStyle}>
-                    {
-                      selectedRecipe.description
-                    }
-                  </div>
-                )}
-
-                <div style={baseRecipeStyle}>
+                <div
+                  style={
+                    recipeInfoTextStyle
+                  }
+                >
                   Bazowa receptura:{" "}
-                  {selectedRecipe.diameter_cm !==
-                  null
-                    ? `${formatNumber(
-                        Number(
-                          selectedRecipe.diameter_cm
-                        )
-                      )} cm`
-                    : "—"}
-
-                  {" × "}
-
-                  {selectedRecipe.height_cm !==
-                  null
-                    ? `${formatNumber(
-                        Number(
-                          selectedRecipe.height_cm
-                        )
-                      )} cm`
-                    : "—"}
+                  <strong>
+                    {formatNumber(
+                      baseDiameter
+                    )}{" "}
+                    cm ×{" "}
+                    {formatNumber(
+                      baseHeight
+                    )}{" "}
+                    cm
+                  </strong>
 
                   {" • "}
 
-                  {selectedRecipe.portions !==
-                  null
-                    ? `${formatNumber(
-                        Number(
-                          selectedRecipe.portions
-                        )
-                      )} porcji`
-                    : "brak danych"}
+                  <strong>
+                    {formatNumber(
+                      basePortions
+                    )}
+                  </strong>{" "}
+                  {basePortions
+                    ? getPortionsLabel(
+                        basePortions
+                      )
+                    : "porcji"}
                 </div>
               </div>
+
+              {hasValidDimensions &&
+                Math.abs(
+                  dimensionScale - 1
+                ) > 0.0001 && (
+                  <div
+                    style={
+                      scaleInfoStyle
+                    }
+                  >
+                    <strong>
+                      Skala receptury:{" "}
+                      {dimensionScale
+                        .toFixed(3)
+                        .replace(
+                          ".",
+                          ","
+                        )}
+                      ×
+                    </strong>
+
+                    <span>
+                      Ilości składników są
+                      automatycznie
+                      przeliczane dla
+                      wybranego rozmiaru
+                      tortu.
+                    </span>
+                  </div>
+                )}
             </>
           )}
         </div>
 
-        <div style={resultCardStyle}>
+        <div style={costCardStyle}>
           <div style={cardHeaderStyle}>
             <div>
               <h3 style={cardTitleStyle}>
@@ -771,103 +833,169 @@ export default function CakeCalculator() {
               </p>
             </div>
 
-            <div style={totalBadgeStyle}>
-              {formatMoney(totalCost)}
-            </div>
+            {selectedRecipe && (
+              <div style={totalBadgeStyle}>
+                {formatMoney(totalCost)}
+              </div>
+            )}
           </div>
 
           {!selectedRecipe ? (
             <div style={emptyStyle}>
-              Wybierz recepturę, aby zobaczyć
-              koszt tortu.
+              <div
+                style={emptyIconStyle}
+              >
+                T
+              </div>
+
+              <strong>
+                Wybierz recepturę
+              </strong>
+
+              <p
+                style={emptyTextStyle}
+              >
+                Wybierz recepturę po lewej,
+                aby zobaczyć składniki
+                i koszt tortu.
+              </p>
             </div>
-          ) : calculatedIngredients.length ===
+          ) : recipeIngredients.length ===
             0 ? (
             <div style={emptyStyle}>
-              Ta receptura nie ma jeszcze
-              składników.
+              <div
+                style={emptyIconStyle}
+              >
+                !
+              </div>
+
+              <strong>
+                Brak składników
+              </strong>
+
+              <p
+                style={emptyTextStyle}
+              >
+                Ta receptura nie ma jeszcze
+                dodanych składników.
+              </p>
             </div>
           ) : (
             <>
-              <div style={ingredientsListStyle}>
+              <div
+                style={
+                  ingredientsListStyle
+                }
+              >
                 {calculatedIngredients.map(
-                  (ingredient) => (
-                    <div
-                      key={ingredient.id}
-                      style={
-                        ingredientRowStyle
-                      }
-                    >
+                  (item) => {
+                    const {
+                      ingredient,
+                      product,
+                      scaledQuantity,
+                      cost,
+                    } = item;
+
+                    return (
                       <div
+                        key={
+                          ingredient.id
+                        }
                         style={
-                          ingredientMainStyle
+                          ingredientRowStyle
                         }
                       >
                         <div
                           style={
-                            ingredientIconStyle
+                            ingredientMainStyle
                           }
                         >
-                          {ingredient.name
-                            .charAt(0)
-                            .toUpperCase()}
+                          <div
+                            style={
+                              ingredientIconStyle
+                            }
+                          >
+                            {product?.name
+                              ?.charAt(
+                                0
+                              )
+                              .toUpperCase() ??
+                              "P"}
+                          </div>
+
+                          <div
+                            style={
+                              ingredientDetailsStyle
+                            }
+                          >
+                            <div
+                              style={
+                                ingredientNameStyle
+                              }
+                            >
+                              {product?.name ??
+                                "Nieznany produkt"}
+                            </div>
+
+                            <div
+                              style={
+                                ingredientRecipeQuantityStyle
+                              }
+                            >
+                              Receptura:{" "}
+                              {formatNumber(
+                                ingredient.quantity
+                              )}{" "}
+                              {
+                                ingredient.unit
+                              }
+                            </div>
+                          </div>
                         </div>
 
-                        <div>
+                        <div
+                          style={
+                            ingredientCalculationStyle
+                          }
+                        >
                           <div
                             style={
-                              ingredientNameStyle
+                              scaledQuantityStyle
                             }
                           >
-                            {ingredient.name}
-                          </div>
-
-                          <div
-                            style={
-                              ingredientMetaStyle
-                            }
-                          >
-                            Receptura:{" "}
                             {formatNumber(
-                              ingredient.originalQuantity
+                              scaledQuantity
                             )}{" "}
                             {
                               ingredient.unit
                             }
                           </div>
 
-                          <div
+                          <strong
                             style={
-                              calculatedQuantityStyle
+                              ingredientCostStyle
                             }
                           >
-                            {formatNumber(
-                              ingredient.calculatedQuantity
-                            )}{" "}
-                            {
-                              ingredient.unit
-                            }
-                          </div>
+                            {formatMoney(
+                              cost
+                            )}
+                          </strong>
                         </div>
                       </div>
-
-                      <strong
-                        style={
-                          ingredientCostStyle
-                        }
-                      >
-                        {formatMoney(
-                          ingredient.cost
-                        )}
-                      </strong>
-                    </div>
-                  )
+                    );
+                  }
                 )}
               </div>
 
-              <div style={summaryStyle}>
+              <div
+                style={
+                  summaryStyle
+                }
+              >
                 <div
-                  style={summaryRowStyle}
+                  style={
+                    summaryRowStyle
+                  }
                 >
                   <span>
                     Koszt składników
@@ -881,39 +1009,31 @@ export default function CakeCalculator() {
                 </div>
 
                 <div
-                  style={summaryRowStyle}
+                  style={
+                    summaryRowStyle
+                  }
                 >
                   <span>
                     Liczba porcji
                   </span>
 
                   <strong>
-                    {Number.isFinite(
-                      currentPortions
-                    ) &&
-                    currentPortions > 0
-                      ? formatNumber(
-                          currentPortions
-                        )
-                      : "—"}
+                    {formatNumber(
+                      calculatedPortions
+                    )}
                   </strong>
                 </div>
 
                 <div
-                  style={{
-                    ...summaryRowStyle,
-                    ...finalSummaryRowStyle,
-                  }}
+                  style={
+                    finalSummaryRowStyle
+                  }
                 >
                   <span>
                     Koszt 1 porcji
                   </span>
 
-                  <strong
-                    style={
-                      finalValueStyle
-                    }
-                  >
+                  <strong>
                     {formatMoney(
                       costPerPortion
                     )}
@@ -925,33 +1045,53 @@ export default function CakeCalculator() {
         </div>
       </div>
 
-      <div style={infoCardStyle}>
-        <h3 style={infoTitleStyle}>
-          Jak liczony jest koszt?
-        </h3>
+      {selectedRecipe && (
+        <div style={explanationCardStyle}>
+          <h3
+            style={
+              explanationTitleStyle
+            }
+          >
+            Jak liczony jest koszt?
+          </h3>
 
-        <p style={infoTextStyle}>
-          Każdy składnik jest przeliczany na
-          podstawie ilości potrzebnej do
-          przygotowania tortu oraz ceny
-          opakowania produktu.
-        </p>
+          <p
+            style={
+              explanationTextStyle
+            }
+          >
+            Każdy składnik jest przeliczany
+            na podstawie ilości potrzebnej do
+            przygotowania tortu oraz ceny
+            opakowania produktu.
+          </p>
 
-        <div style={formulaStyle}>
-          <strong>
-            Koszt składnika =
-          </strong>{" "}
-          ilość potrzebna ÷ ilość w opakowaniu
-          × cena opakowania
+          <div
+            style={
+              formulaStyle
+            }
+          >
+            <strong>
+              Koszt składnika =
+            </strong>{" "}
+            ilość potrzebna ÷ ilość w
+            opakowaniu × cena opakowania
+          </div>
+
+          <p
+            style={
+              explanationTextStyle
+            }
+          >
+            Wielkość tortu jest skalowana
+            względem średnicy i wysokości
+            zapisanej w bazowej recepturze.
+            Skalowanie uwzględnia objętość
+            tortu, dlatego średnica wpływa
+            na wynik w kwadracie.
+          </p>
         </div>
-
-        <p style={infoTextStyle}>
-          Wielkość tortu jest skalowana
-          względem średnicy, wysokości oraz
-          liczby porcji zapisanych w bazowej
-          recepturze.
-        </p>
-      </div>
+      )}
     </section>
   );
 }
@@ -961,10 +1101,6 @@ const pageStyle = {
 };
 
 const headerStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "20px",
   marginBottom: "24px",
 };
 
@@ -991,7 +1127,7 @@ const subtitleStyle = {
 const mainGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(300px, 430px) minmax(0, 1fr)",
+    "minmax(320px, 420px) minmax(0, 1fr)",
   gap: "20px",
   alignItems: "start",
 };
@@ -1004,21 +1140,13 @@ const parametersCardStyle = {
   boxSizing: "border-box" as const,
 };
 
-const resultCardStyle = {
+const costCardStyle = {
   background: "#ffffff",
   border: "1px solid #e9e2da",
   borderRadius: "18px",
   padding: "24px",
   boxSizing: "border-box" as const,
   minWidth: 0,
-};
-
-const infoCardStyle = {
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "18px",
-  padding: "24px",
-  marginTop: "20px",
 };
 
 const cardHeaderStyle = {
@@ -1067,6 +1195,30 @@ const inputStyle = {
   outline: "none",
 };
 
+const inputWithUnitStyle = {
+  display: "flex",
+  alignItems: "stretch",
+};
+
+const unitInputStyle = {
+  ...inputStyle,
+  borderTopRightRadius: 0,
+  borderBottomRightRadius: 0,
+};
+
+const unitStyle = {
+  display: "flex",
+  alignItems: "center",
+  padding: "0 11px",
+  border: "1px solid #ddd3c9",
+  borderLeft: "none",
+  borderTopRightRadius: "9px",
+  borderBottomRightRadius: "9px",
+  background: "#f7f3ef",
+  color: "#8a837d",
+  fontSize: "13px",
+};
+
 const threeColumnStyle = {
   display: "grid",
   gridTemplateColumns:
@@ -1074,82 +1226,81 @@ const threeColumnStyle = {
   gap: "10px",
 };
 
-const inputWithSuffixStyle = {
-  display: "flex",
-  alignItems: "stretch",
-};
-
-const suffixInputStyle = {
-  ...inputStyle,
-  borderTopRightRadius: 0,
-  borderBottomRightRadius: 0,
-};
-
-const inputSuffixStyle = {
-  display: "flex",
-  alignItems: "center",
-  padding: "0 10px",
-  border: "1px solid #ddd3c9",
-  borderLeft: "none",
-  borderRadius:
-    "0 9px 9px 0",
-  background: "#f8f5f2",
-  color: "#8a837d",
-  fontSize: "12px",
-};
-
 const recipeInfoBoxStyle = {
-  marginTop: "4px",
-  padding: "14px",
+  background: "#f7f3ef",
+  border: "1px solid #e9e2da",
   borderRadius: "11px",
-  background: "#fcfaf7",
-  border: "1px solid #eee7e0",
-  color: "#514b46",
-  fontSize: "13px",
+  padding: "13px",
+  marginTop: "4px",
 };
 
-const descriptionStyle = {
-  marginTop: "5px",
-  color: "#8a837d",
-  fontSize: "12px",
+const recipeInfoTitleStyle = {
+  color: "#292522",
+  fontSize: "14px",
+  fontWeight: 700,
+  marginBottom: "5px",
 };
 
-const baseRecipeStyle = {
-  marginTop: "9px",
-  color: "#8a6d4b",
+const recipeInfoTextStyle = {
+  color: "#716b65",
   fontSize: "12px",
+  lineHeight: 1.5,
+};
+
+const scaleInfoStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "4px",
+  background: "#f0f8f2",
+  border: "1px solid #bdd9c3",
+  color: "#477451",
+  borderRadius: "10px",
+  padding: "11px",
+  marginTop: "12px",
+  fontSize: "12px",
+  lineHeight: 1.4,
 };
 
 const totalBadgeStyle = {
   background: "#f0f8f2",
   color: "#477451",
   border: "1px solid #bdd9c3",
-  borderRadius: "11px",
-  padding: "10px 13px",
-  fontSize: "17px",
+  borderRadius: "10px",
+  padding: "9px 12px",
+  fontSize: "16px",
   fontWeight: 700,
   whiteSpace: "nowrap" as const,
 };
 
-const refreshButtonStyle = {
-  border: "1px solid #ddd3c9",
-  background: "#ffffff",
-  color: "#8a6d4b",
-  borderRadius: "9px",
-  padding: "9px 13px",
-  cursor: "pointer",
-  fontSize: "12px",
-  fontWeight: 600,
+const emptyStyle = {
+  minHeight: "250px",
+  display: "flex",
+  flexDirection: "column" as const,
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center" as const,
+  color: "#716b65",
 };
 
-const errorStyle = {
-  background: "#fff1f0",
-  border: "1px solid #e7b8b3",
-  color: "#9b4d43",
-  borderRadius: "9px",
-  padding: "11px",
-  marginBottom: "18px",
+const emptyIconStyle = {
+  width: "50px",
+  height: "50px",
+  borderRadius: "14px",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 700,
+  fontSize: "20px",
+  marginBottom: "14px",
+};
+
+const emptyTextStyle = {
+  margin: "7px 0 0",
   fontSize: "13px",
+  maxWidth: "350px",
+  lineHeight: 1.5,
 };
 
 const ingredientsListStyle = {
@@ -1165,13 +1316,13 @@ const ingredientRowStyle = {
   gap: "15px",
   border: "1px solid #eee7e0",
   borderRadius: "11px",
-  padding: "12px",
+  padding: "11px 12px",
 };
 
 const ingredientMainStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "11px",
+  gap: "10px",
   minWidth: 0,
 };
 
@@ -1188,21 +1339,32 @@ const ingredientIconStyle = {
   flexShrink: 0,
 };
 
+const ingredientDetailsStyle = {
+  minWidth: 0,
+};
+
 const ingredientNameStyle = {
   fontSize: "14px",
-  fontWeight: 700,
+  fontWeight: 600,
   color: "#292522",
 };
 
-const ingredientMetaStyle = {
-  marginTop: "3px",
+const ingredientRecipeQuantityStyle = {
+  marginTop: "4px",
   color: "#8a837d",
-  fontSize: "11px",
+  fontSize: "12px",
 };
 
-const calculatedQuantityStyle = {
-  marginTop: "3px",
-  color: "#477451",
+const ingredientCalculationStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  alignItems: "flex-end",
+  gap: "3px",
+  flexShrink: 0,
+};
+
+const scaledQuantityStyle = {
+  color: "#292522",
   fontSize: "13px",
   fontWeight: 600,
 };
@@ -1210,12 +1372,11 @@ const calculatedQuantityStyle = {
 const ingredientCostStyle = {
   color: "#477451",
   fontSize: "15px",
-  whiteSpace: "nowrap" as const,
 };
 
 const summaryStyle = {
   marginTop: "18px",
-  paddingTop: "16px",
+  paddingTop: "15px",
   borderTop: "1px solid #eee7e0",
 };
 
@@ -1225,44 +1386,34 @@ const summaryRowStyle = {
   alignItems: "center",
   gap: "15px",
   padding: "7px 0",
-  color: "#514b46",
+  color: "#716b65",
   fontSize: "13px",
 };
 
 const finalSummaryRowStyle = {
-  marginTop: "6px",
-  paddingTop: "13px",
+  ...summaryRowStyle,
+  marginTop: "7px",
+  paddingTop: "14px",
   borderTop: "1px solid #eee7e0",
+  color: "#292522",
   fontSize: "15px",
-  fontWeight: 700,
 };
 
-const finalValueStyle = {
-  color: "#477451",
-  fontSize: "20px",
+const explanationCardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "18px",
+  padding: "24px",
+  marginTop: "20px",
 };
 
-const calculatedQuantityHintStyle = {
-  color: "#8a837d",
-};
-
-const emptyStyle = {
-  minHeight: "220px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textAlign: "center" as const,
-  color: "#8a837d",
-  fontSize: "13px",
-};
-
-const infoTitleStyle = {
+const explanationTitleStyle = {
   margin: 0,
   color: "#292522",
-  fontSize: "16px",
+  fontSize: "17px",
 };
 
-const infoTextStyle = {
+const explanationTextStyle = {
   margin: "8px 0 0",
   color: "#716b65",
   fontSize: "13px",
@@ -1270,12 +1421,23 @@ const infoTextStyle = {
 };
 
 const formulaStyle = {
-  marginTop: "13px",
-  padding: "13px",
+  marginTop: "14px",
+  background: "#f7f3ef",
+  border: "1px solid #e9e2da",
   borderRadius: "10px",
-  background: "#f8f5f2",
+  padding: "12px",
   color: "#514b46",
   fontSize: "13px",
+  lineHeight: 1.5,
 };
 
-void calculatedQuantityHintStyle;
+const errorStyle = {
+  background: "#fff1f0",
+  border: "1px solid #e7b8b3",
+  color: "#9b4d43",
+  borderRadius: "9px",
+  padding: "11px",
+  marginBottom: "14px",
+  fontSize: "13px",
+  lineHeight: 1.5,
+};
