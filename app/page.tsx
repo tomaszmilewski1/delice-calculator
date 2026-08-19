@@ -1,40 +1,53 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../folder/lib/supabase";
+
+type View =
+  | "dashboard"
+  | "newCake"
+  | "products"
+  | "recipes"
+  | "orders";
 
 export default function Home() {
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loggingIn, setLoggingIn] = useState(false);
-  const [error, setError] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginMessage, setLoginMessage] = useState("");
+
+  const [view, setView] = useState<View>("dashboard");
 
   useEffect(() => {
     let mounted = true;
 
-    async function checkSession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    async function loadSession() {
+      const { data, error } = await supabase.auth.getSession();
 
-      if (mounted) {
-        setLoggedIn(!!session);
-        setLoading(false);
+      if (!mounted) return;
+
+      if (error) {
+        console.error("Błąd pobierania sesji:", error);
       }
+
+      setSession(data.session);
+      setLoading(false);
     }
 
-    checkSession();
+    loadSession();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setLoggedIn(!!session);
-      }
-    );
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return;
+
+      setSession(newSession);
+      setLoading(false);
+    });
 
     return () => {
       mounted = false;
@@ -45,58 +58,106 @@ export default function Home() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
 
-    setError("");
-    setLoggingIn(true);
+    setLoginError("");
+    setLoginMessage("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail || !password) {
+      setLoginError("Podaj adres e-mail i hasło.");
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
       password,
     });
 
     if (error) {
-      setError(
-        "Nieprawidłowy e-mail lub hasło."
-      );
-      setLoggingIn(false);
+      setLoginError(getAuthErrorMessage(error.message));
       return;
     }
 
+    setSession(data.session);
+    setView("dashboard");
     setPassword("");
-    setLoggingIn(false);
   }
 
-  async function logout() {
-    await supabase.auth.signOut();
+  async function handleLogout() {
+    const { error } = await supabase.auth.signOut();
 
-    setLoggedIn(false);
+    if (error) {
+      console.error("Błąd wylogowania:", error);
+      return;
+    }
+
+    setSession(null);
+    setView("dashboard");
     setEmail("");
     setPassword("");
+    setLoginError("");
+    setLoginMessage("");
+  }
+
+  async function handleResetPassword() {
+    setLoginError("");
+    setLoginMessage("");
+
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail) {
+      setLoginError(
+        "Najpierw wpisz adres e-mail, na który mamy wysłać link do zmiany hasła."
+      );
+      return;
+    }
+
+    const redirectUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/`
+        : undefined;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      cleanEmail,
+      {
+        redirectTo: redirectUrl,
+      }
+    );
+
+    if (error) {
+      setLoginError(getAuthErrorMessage(error.message));
+      return;
+    }
+
+    setLoginMessage(
+      "Jeżeli konto istnieje, wysłaliśmy wiadomość z instrukcją zmiany hasła."
+    );
   }
 
   if (loading) {
     return (
-      <main style={pageStyle}>
-        <div style={loadingBoxStyle}>
-          <div style={brandStyle}>Délice</div>
+      <main style={loginPageStyle}>
+        <div style={loginBoxStyle}>
+          <div style={{ textAlign: "center" }}>
+            <div style={brandStyle}>Délice</div>
 
-          <h1
-            style={{
-              fontSize: "30px",
-              margin: 0,
-            }}
-          >
-            Kalkulator tortów
-          </h1>
+            <h1
+              style={{
+                fontSize: "30px",
+                margin: "0 0 10px",
+              }}
+            >
+              Kalkulator tortów
+            </h1>
 
-          <p style={mutedStyle}>
-            Ładowanie panelu...
-          </p>
+            <p style={mutedStyle}>Sprawdzanie sesji...</p>
+          </div>
         </div>
       </main>
     );
   }
 
-  if (!loggedIn) {
+  if (!session) {
     return (
       <main style={loginPageStyle}>
         <div style={loginBoxStyle}>
@@ -112,7 +173,6 @@ export default function Home() {
               style={{
                 fontSize: "30px",
                 margin: 0,
-                fontWeight: 700,
               }}
             >
               Kalkulator tortów
@@ -125,63 +185,66 @@ export default function Home() {
 
           <form onSubmit={handleLogin}>
             <label style={labelStyle}>
-              <div style={labelTextStyle}>
-                E-mail
-              </div>
+              <div style={labelTextStyle}>E-mail</div>
 
               <input
                 type="email"
                 value={email}
-                onChange={(e) =>
-                  setEmail(e.target.value)
-                }
-                placeholder="Wpisz adres e-mail"
-                required
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setLoginError("");
+                }}
+                placeholder="twoj@email.pl"
                 autoComplete="email"
+                required
                 style={inputStyle}
               />
             </label>
 
             <label style={labelStyle}>
-              <div style={labelTextStyle}>
-                Hasło
-              </div>
+              <div style={labelTextStyle}>Hasło</div>
 
               <input
                 type="password"
                 value={password}
-                onChange={(e) =>
-                  setPassword(e.target.value)
-                }
-                placeholder="Wpisz hasło"
-                required
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setLoginError("");
+                }}
+                placeholder="Hasło"
                 autoComplete="current-password"
+                required
                 style={inputStyle}
               />
             </label>
 
-            {error && (
-              <div style={errorStyle}>
-                {error}
+            {loginError && (
+              <div style={errorBoxStyle}>
+                {loginError}
+              </div>
+            )}
+
+            {loginMessage && (
+              <div style={successBoxStyle}>
+                {loginMessage}
               </div>
             )}
 
             <button
               type="submit"
-              disabled={loggingIn}
-              style={{
-                ...primaryButtonStyle,
-                opacity: loggingIn ? 0.7 : 1,
-                cursor: loggingIn
-                  ? "wait"
-                  : "pointer",
-              }}
+              style={primaryButtonStyle}
             >
-              {loggingIn
-                ? "Logowanie..."
-                : "Zaloguj się"}
+              Zaloguj się
             </button>
           </form>
+
+          <button
+            type="button"
+            onClick={handleResetPassword}
+            style={forgotPasswordButtonStyle}
+          >
+            Nie pamiętasz hasła?
+          </button>
 
           <div
             style={{
@@ -200,38 +263,277 @@ export default function Home() {
 
   return (
     <main style={pageStyle}>
-      <div style={successBoxStyle}>
-        <div style={brandStyle}>Délice</div>
-
-        <h1
+      <div style={containerStyle}>
+        <header
           style={{
-            fontSize: "36px",
-            margin: "0 0 12px",
-            fontWeight: 700,
+            marginBottom: "30px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "20px",
           }}
         >
-          Kalkulator tortów
-        </h1>
+          <div>
+            <div style={brandStyle}>Délice</div>
 
-        <p
-          style={{
-            color: "#716b65",
-            fontSize: "17px",
-            margin: "0 0 30px",
-          }}
-        >
-          Zalogowano pomyślnie. Panel kalkulatora
-          jest gotowy.
-        </p>
+            <h1
+              style={{
+                fontSize: "42px",
+                margin: 0,
+              }}
+            >
+              Kalkulator tortów
+            </h1>
 
-        <button
-          onClick={logout}
-          style={logoutButtonStyle}
-        >
-          Wyloguj się
-        </button>
+            <p style={subtitleStyle}>
+              Zarządzaj recepturami, kosztami i zamówieniami
+              w jednym miejscu.
+            </p>
+
+            <div
+              style={{
+                marginTop: "10px",
+                fontSize: "13px",
+                color: "#8a6d4b",
+              }}
+            >
+              Zalogowano jako: {session.user?.email}
+            </div>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            style={logoutButtonStyle}
+          >
+            Wyloguj się
+          </button>
+        </header>
+
+        {view !== "dashboard" && (
+          <button
+            onClick={() => setView("dashboard")}
+            style={backButtonStyle}
+          >
+            ← Powrót do panelu
+          </button>
+        )}
+
+        {view === "dashboard" && (
+          <>
+            <section style={cardsGridStyle}>
+              <DashboardCard
+                title="Nowy tort"
+                description="Oblicz składniki, koszt i cenę sprzedaży."
+                onClick={() => setView("newCake")}
+              />
+
+              <DashboardCard
+                title="Produkty"
+                description="Dodawaj produkty, ceny zakupu, opakowania i jednostki."
+                onClick={() => setView("products")}
+              />
+
+              <DashboardCard
+                title="Receptury"
+                description="Twórz i przeliczaj własne receptury."
+                onClick={() => setView("recipes")}
+              />
+
+              <DashboardCard
+                title="Zamówienia"
+                description="Kontroluj zamówienia i terminy odbioru."
+                onClick={() => setView("orders")}
+              />
+            </section>
+
+            <section style={sectionStyle}>
+              <h2 style={{ marginTop: 0 }}>
+                Podsumowanie
+              </h2>
+
+              <div style={statsGridStyle}>
+                <Stat
+                  title="Zamówienia"
+                  value="0"
+                />
+
+                <Stat
+                  title="Torty"
+                  value="0"
+                />
+
+                <Stat
+                  title="Sprzedaż"
+                  value="0,00 zł"
+                />
+
+                <Stat
+                  title="Zysk"
+                  value="0,00 zł"
+                />
+              </div>
+            </section>
+          </>
+        )}
+
+        {view === "newCake" && (
+          <EmptyModule
+            title="Nowy tort"
+            description="Moduł kalkulacji tortów jest gotowy do dalszej rozbudowy."
+          />
+        )}
+
+        {view === "products" && (
+          <EmptyModule
+            title="Produkty"
+            description="Moduł produktów jest gotowy do dalszej rozbudowy."
+          />
+        )}
+
+        {view === "recipes" && (
+          <EmptyModule
+            title="Receptury"
+            description="Tutaj będziemy tworzyć i przeliczać własne receptury."
+          />
+        )}
+
+        {view === "orders" && (
+          <EmptyModule
+            title="Zamówienia"
+            description="Tutaj będziemy zarządzać zamówieniami i terminami odbioru."
+          />
+        )}
       </div>
     </main>
+  );
+}
+
+function getAuthErrorMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("invalid login credentials") ||
+    normalized.includes("invalid credentials")
+  ) {
+    return "Nieprawidłowy e-mail lub hasło.";
+  }
+
+  if (normalized.includes("email not confirmed")) {
+    return "Adres e-mail nie został jeszcze potwierdzony.";
+  }
+
+  if (normalized.includes("too many requests")) {
+    return "Zbyt wiele prób. Spróbuj ponownie za chwilę.";
+  }
+
+  if (normalized.includes("user not found")) {
+    return "Nie znaleziono użytkownika.";
+  }
+
+  return "Nie udało się zalogować. Sprawdź dane i spróbuj ponownie.";
+}
+
+function DashboardCard({
+  title,
+  description,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: "#ffffff",
+        border: "1px solid #e9e2da",
+        borderRadius: "18px",
+        padding: "26px",
+        minHeight: "150px",
+        textAlign: "left",
+        cursor: "pointer",
+        color: "#292522",
+        width: "100%",
+      }}
+    >
+      <h2
+        style={{
+          marginTop: 0,
+          marginBottom: "10px",
+          fontSize: "21px",
+        }}
+      >
+        {title}
+      </h2>
+
+      <p
+        style={{
+          color: "#716b65",
+          lineHeight: 1.6,
+          margin: 0,
+        }}
+      >
+        {description}
+      </p>
+    </button>
+  );
+}
+
+function EmptyModule({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <section style={sectionStyle}>
+      <h2 style={sectionTitleStyle}>{title}</h2>
+
+      <p style={mutedStyle}>{description}</p>
+
+      <div
+        style={{
+          marginTop: "25px",
+          padding: "25px",
+          background: "#faf8f5",
+          borderRadius: "12px",
+          border: "1px dashed #ddd3c9",
+          color: "#716b65",
+        }}
+      >
+        Moduł przygotowany do dalszej rozbudowy.
+      </div>
+    </section>
+  );
+}
+
+function Stat({
+  title,
+  value,
+}: {
+  title: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          color: "#8a6d4b",
+          fontSize: "13px",
+          textTransform: "uppercase",
+          letterSpacing: "1px",
+          marginBottom: "8px",
+        }}
+      >
+        {title}
+      </div>
+
+      <strong style={{ fontSize: "26px" }}>
+        {value}
+      </strong>
+    </div>
   );
 }
 
@@ -240,11 +542,12 @@ const pageStyle = {
   background: "#faf8f5",
   color: "#292522",
   fontFamily: "Arial, sans-serif",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "20px",
-  boxSizing: "border-box" as const,
+  padding: "40px 20px",
+};
+
+const containerStyle = {
+  maxWidth: "1100px",
+  margin: "0 auto",
 };
 
 const loginPageStyle = {
@@ -256,7 +559,6 @@ const loginPageStyle = {
   padding: "20px",
   fontFamily: "Arial, sans-serif",
   color: "#292522",
-  boxSizing: "border-box" as const,
 };
 
 const loginBoxStyle = {
@@ -267,32 +569,7 @@ const loginBoxStyle = {
   borderRadius: "20px",
   padding: "35px",
   boxSizing: "border-box" as const,
-  boxShadow:
-    "0 10px 30px rgba(0,0,0,0.05)",
-};
-
-const loadingBoxStyle = {
-  width: "100%",
-  maxWidth: "500px",
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "20px",
-  padding: "40px",
-  boxSizing: "border-box" as const,
-  textAlign: "center" as const,
-};
-
-const successBoxStyle = {
-  width: "100%",
-  maxWidth: "700px",
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "20px",
-  padding: "45px",
-  boxSizing: "border-box" as const,
-  boxShadow:
-    "0 10px 30px rgba(0,0,0,0.05)",
-  textAlign: "center" as const,
+  boxShadow: "0 10px 30px rgba(0,0,0,0.05)",
 };
 
 const brandStyle = {
@@ -303,10 +580,15 @@ const brandStyle = {
   marginBottom: "10px",
 };
 
+const subtitleStyle = {
+  color: "#716b65",
+  fontSize: "17px",
+  marginTop: "12px",
+};
+
 const mutedStyle = {
   color: "#716b65",
   lineHeight: 1.6,
-  marginTop: "12px",
 };
 
 const labelStyle = {
@@ -323,24 +605,35 @@ const labelTextStyle = {
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box" as const,
-  padding: "13px",
+  padding: "12px",
   border: "1px solid #ddd3c9",
   borderRadius: "9px",
-  background: "#ffffff",
+  background: "#fff",
   color: "#292522",
   fontSize: "14px",
-  outline: "none",
 };
 
 const primaryButtonStyle = {
   width: "100%",
   border: "none",
   borderRadius: "10px",
-  padding: "14px",
+  padding: "13px",
   background: "#8a6d4b",
   color: "#ffffff",
   fontSize: "15px",
   fontWeight: 600,
+  cursor: "pointer",
+};
+
+const forgotPasswordButtonStyle = {
+  display: "block",
+  width: "100%",
+  marginTop: "15px",
+  border: "none",
+  background: "transparent",
+  color: "#8a6d4b",
+  fontSize: "14px",
+  cursor: "pointer",
 };
 
 const logoutButtonStyle = {
@@ -348,18 +641,64 @@ const logoutButtonStyle = {
   background: "#ffffff",
   color: "#8a6d4b",
   borderRadius: "10px",
-  padding: "12px 22px",
+  padding: "10px 15px",
   cursor: "pointer",
-  fontSize: "14px",
-  fontWeight: 600,
 };
 
-const errorStyle = {
-  background: "#fff3f1",
-  border: "1px solid #e7c5bf",
-  color: "#9b4d43",
+const backButtonStyle = {
+  border: "none",
+  background: "transparent",
+  color: "#8a6d4b",
+  cursor: "pointer",
+  fontSize: "15px",
+  padding: 0,
+  marginBottom: "25px",
+};
+
+const cardsGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "20px",
+};
+
+const sectionStyle = {
+  marginTop: "20px",
+  background: "#ffffff",
+  borderRadius: "18px",
+  padding: "25px",
+  border: "1px solid #e9e2da",
+};
+
+const sectionTitleStyle = {
+  marginTop: 0,
+};
+
+const statsGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "20px",
+};
+
+const errorBoxStyle = {
+  marginBottom: "15px",
+  padding: "12px",
   borderRadius: "9px",
-  padding: "11px 12px",
-  marginBottom: "16px",
+  background: "#fdf0ee",
+  border: "1px solid #e7c6c1",
+  color: "#9b4d43",
   fontSize: "14px",
+  lineHeight: 1.5,
+};
+
+const successBoxStyle = {
+  marginBottom: "15px",
+  padding: "12px",
+  borderRadius: "9px",
+  background: "#f3f8f1",
+  border: "1px solid #cddfc7",
+  color: "#56704e",
+  fontSize: "14px",
+  lineHeight: 1.5,
 };
