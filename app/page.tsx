@@ -1,12 +1,6 @@
 "use client";
 
-import { useState } from "react";
-
-type View =
-  | "login"
-  | "dashboard"
-  | "newCake"
-  | "products";
+import { useMemo, useState } from "react";
 
 type Ingredient = {
   id: number;
@@ -14,6 +8,14 @@ type Ingredient = {
   quantity: number;
   unit: string;
   price: number;
+};
+
+type Product = {
+  id: number;
+  name: string;
+  purchasePrice: number;
+  packageSize: number;
+  unit: string;
 };
 
 const initialIngredients: Ingredient[] = [
@@ -41,11 +43,15 @@ const initialIngredients: Ingredient[] = [
 ];
 
 export default function Home() {
-  const [view, setView] = useState<View>("login");
+  const [loggedIn, setLoggedIn] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+
+  const [view, setView] = useState<
+    "dashboard" | "newCake" | "products"
+  >("dashboard");
 
   const [cakeName, setCakeName] = useState("");
   const [diameter, setDiameter] = useState("");
@@ -55,27 +61,38 @@ export default function Home() {
   const [ingredients, setIngredients] =
     useState<Ingredient[]>(initialIngredients);
 
-  const totalCost = ingredients.reduce(
-    (sum, ingredient) =>
-      sum + ingredient.quantity * ingredient.price,
-    0
-  );
+  const [products, setProducts] = useState<Product[]>([]);
+
+  const [productName, setProductName] = useState("");
+  const [purchasePrice, setPurchasePrice] = useState("");
+  const [packageSize, setPackageSize] = useState("");
+  const [productUnit, setProductUnit] = useState("g");
+
+  const totalCost = useMemo(() => {
+    return ingredients.reduce((sum, ingredient) => {
+      return sum + ingredient.quantity * ingredient.price;
+    }, 0);
+  }, [ingredients]);
 
   const sellingPrice =
     totalCost * (1 + Number(margin || 0) / 100);
 
   const profit = sellingPrice - totalCost;
 
-  function handleLogin() {
-    setLoginError("");
-
+  function login() {
     if (!email.trim() || !password.trim()) {
-      setLoginError(
-        "Wpisz adres e-mail oraz hasło."
-      );
+      setLoginError("Wpisz e-mail i hasło.");
       return;
     }
 
+    setLoginError("");
+    setLoggedIn(true);
+  }
+
+  function logout() {
+    setLoggedIn(false);
+    setEmail("");
+    setPassword("");
     setView("dashboard");
   }
 
@@ -86,14 +103,9 @@ export default function Home() {
   ) {
     setIngredients((current) =>
       current.map((ingredient) => {
-        if (ingredient.id !== id) {
-          return ingredient;
-        }
+        if (ingredient.id !== id) return ingredient;
 
-        if (
-          field === "name" ||
-          field === "unit"
-        ) {
+        if (field === "name" || field === "unit") {
           return {
             ...ingredient,
             [field]: value,
@@ -123,60 +135,72 @@ export default function Home() {
 
   function removeIngredient(id: number) {
     setIngredients((current) =>
-      current.filter(
-        (ingredient) =>
-          ingredient.id !== id
-      )
+      current.filter((ingredient) => ingredient.id !== id)
     );
   }
 
-  function logout() {
-    setEmail("");
-    setPassword("");
-    setView("login");
+  function addProduct() {
+    if (!productName.trim()) return;
+
+    const newProduct: Product = {
+      id: Date.now(),
+      name: productName,
+      purchasePrice: Number(purchasePrice) || 0,
+      packageSize: Number(packageSize) || 0,
+      unit: productUnit,
+    };
+
+    setProducts((current) => [...current, newProduct]);
+
+    setProductName("");
+    setPurchasePrice("");
+    setPackageSize("");
+    setProductUnit("g");
   }
 
-  if (view === "login") {
+  function removeProduct(id: number) {
+    setProducts((current) =>
+      current.filter((product) => product.id !== id)
+    );
+  }
+
+  if (!loggedIn) {
     return (
       <main
         style={{
           minHeight: "100vh",
           background: "#faf8f5",
+          color: "#292522",
+          fontFamily: "Arial, sans-serif",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           padding: "20px",
-          fontFamily:
-            "Arial, sans-serif",
-          color: "#292522",
         }}
       >
-        <div
+        <section
           style={{
             width: "100%",
             maxWidth: "430px",
             background: "#ffffff",
-            border:
-              "1px solid #e9e2da",
+            border: "1px solid #e9e2da",
             borderRadius: "22px",
-            padding: "40px",
+            padding: "35px",
             boxSizing: "border-box",
-            boxShadow:
-              "0 10px 35px rgba(80, 60, 40, 0.08)",
+            boxShadow: "0 10px 30px rgba(80, 60, 40, 0.06)",
           }}
         >
           <div
             style={{
               textAlign: "center",
-              marginBottom: "32px",
+              marginBottom: "30px",
             }}
           >
             <div
               style={{
                 fontSize: "14px",
                 letterSpacing: "4px",
-                textTransform:
-                  "uppercase",
+                textTransform: "uppercase",
                 color: "#8a6d4b",
                 marginBottom: "10px",
               }}
@@ -190,7 +214,7 @@ export default function Home() {
                 fontSize: "32px",
               }}
             >
-              Logowanie
+              Kalkulator tortów
             </h1>
 
             <p
@@ -200,19 +224,17 @@ export default function Home() {
                 lineHeight: 1.5,
               }}
             >
-              Zaloguj się do swojego
-              kalkulatora tortów.
+              Zaloguj się, aby przejść do panelu.
             </p>
           </div>
 
-          <label
-            style={{
-              display: "block",
-              marginBottom: "18px",
-            }}
-          >
+          <label style={{ display: "block", marginBottom: "18px" }}>
             <div
-              style={labelStyle}
+              style={{
+                fontSize: "13px",
+                color: "#716b65",
+                marginBottom: "7px",
+              }}
             >
               E-mail
             </div>
@@ -220,22 +242,19 @@ export default function Home() {
             <input
               type="email"
               value={email}
-              onChange={(e) =>
-                setEmail(e.target.value)
-              }
-              placeholder="twoj@email.pl"
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Wpisz e-mail"
               style={inputStyle}
             />
           </label>
 
-          <label
-            style={{
-              display: "block",
-              marginBottom: "18px",
-            }}
-          >
+          <label style={{ display: "block", marginBottom: "18px" }}>
             <div
-              style={labelStyle}
+              style={{
+                fontSize: "13px",
+                color: "#716b65",
+                marginBottom: "7px",
+              }}
             >
               Hasło
             </div>
@@ -243,12 +262,13 @@ export default function Home() {
             <input
               type="password"
               value={password}
-              onChange={(e) =>
-                setPassword(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="Wpisz hasło"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  login();
+                }
+              }}
               style={inputStyle}
             />
           </label>
@@ -256,10 +276,9 @@ export default function Home() {
           {loginError && (
             <div
               style={{
-                background: "#fdf0ee",
-                border:
-                  "1px solid #e8c9c3",
+                background: "#fff1ef",
                 color: "#9b4d43",
+                border: "1px solid #f0c9c3",
                 borderRadius: "10px",
                 padding: "12px",
                 marginBottom: "18px",
@@ -271,7 +290,7 @@ export default function Home() {
           )}
 
           <button
-            onClick={handleLogin}
+            onClick={login}
             style={{
               width: "100%",
               background: "#8a6d4b",
@@ -287,105 +306,18 @@ export default function Home() {
             Zaloguj się
           </button>
 
-          <div
+          <p
             style={{
               textAlign: "center",
-              marginTop: "24px",
-              color: "#716b65",
-              fontSize: "14px",
+              color: "#9a928b",
+              fontSize: "12px",
+              marginTop: "20px",
+              marginBottom: 0,
             }}
           >
-            Nie masz jeszcze konta?
-            <br />
-
-            <button
-              style={{
-                border: "none",
-                background:
-                  "transparent",
-                color: "#8a6d4b",
-                cursor: "pointer",
-                fontWeight: 600,
-                marginTop: "6px",
-              }}
-            >
-              Utwórz konto
-            </button>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  if (view === "products") {
-    return (
-      <main
-        style={pageStyle}
-      >
-        <div
-          style={containerStyle}
-        >
-          <button
-            onClick={() =>
-              setView("dashboard")
-            }
-            style={backButtonStyle}
-          >
-            ← Powrót do panelu
-          </button>
-
-          <section
-            style={sectionStyle}
-          >
-            <div
-              style={{
-                fontSize: "13px",
-                letterSpacing: "3px",
-                textTransform:
-                  "uppercase",
-                color: "#8a6d4b",
-                marginBottom: "8px",
-              }}
-            >
-              Délice
-            </div>
-
-            <h1
-              style={{
-                margin: 0,
-                fontSize: "32px",
-              }}
-            >
-              Produkty
-            </h1>
-
-            <p
-              style={{
-                color: "#716b65",
-              }}
-            >
-              Zarządzaj produktami
-              i ich aktualnymi cenami.
-            </p>
-
-            <div
-              style={{
-                marginTop: "25px",
-                padding: "25px",
-                background:
-                  "#faf8f5",
-                border:
-                  "1px dashed #ddd3c9",
-                borderRadius: "14px",
-                textAlign: "center",
-                color: "#716b65",
-              }}
-            >
-              Moduł produktów
-              pozostaje aktywny.
-            </div>
-          </section>
-        </div>
+            Panel Délice
+          </p>
+        </section>
       </main>
     );
   }
@@ -393,62 +325,56 @@ export default function Home() {
   if (view === "newCake") {
     return (
       <main
-        style={pageStyle}
+        style={{
+          minHeight: "100vh",
+          background: "#faf8f5",
+          color: "#292522",
+          fontFamily: "Arial, sans-serif",
+          padding: "30px 20px",
+        }}
       >
         <div
-          style={containerStyle}
+          style={{
+            maxWidth: "1100px",
+            margin: "0 auto",
+          }}
         >
-          <button
-            onClick={() =>
-              setView("dashboard")
-            }
-            style={backButtonStyle}
-          >
-            ← Powrót do panelu
-          </button>
-
-          <header
+          <div
             style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
               marginBottom: "25px",
             }}
           >
-            <div
-              style={{
-                fontSize: "14px",
-                letterSpacing: "3px",
-                textTransform:
-                  "uppercase",
-                color: "#8a6d4b",
-              }}
+            <button
+              onClick={() => setView("dashboard")}
+              style={backButtonStyle}
             >
-              Délice
-            </div>
+              ← Powrót do panelu
+            </button>
 
-            <h1
-              style={{
-                fontSize: "38px",
-                margin: "8px 0",
-              }}
-            >
+            <button onClick={logout} style={logoutButtonStyle}>
+              Wyloguj
+            </button>
+          </div>
+
+          <header style={{ marginBottom: "30px" }}>
+            <div style={brandStyle}>Délice</div>
+
+            <h1 style={{ fontSize: "38px", margin: 0 }}>
               Nowy tort
             </h1>
+
+            <p style={{ color: "#716b65", fontSize: "16px" }}>
+              Oblicz koszt wykonania tortu i sugerowaną cenę sprzedaży.
+            </p>
           </header>
 
-          <section
-            style={sectionStyle}
-          >
-            <h2>
-              Informacje o torcie
-            </h2>
+          <section style={sectionStyle}>
+            <h2 style={{ marginTop: 0 }}>Informacje o torcie</h2>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(200px, 1fr))",
-                gap: "16px",
-              }}
-            >
+            <div style={gridStyle}>
               <Input
                 label="Nazwa tortu"
                 value={cakeName}
@@ -460,6 +386,7 @@ export default function Home() {
                 label="Średnica"
                 value={diameter}
                 onChange={setDiameter}
+                placeholder="np. 20"
                 type="number"
               />
 
@@ -467,6 +394,7 @@ export default function Home() {
                 label="Liczba porcji"
                 value={servings}
                 onChange={setServings}
+                placeholder="np. 12"
                 type="number"
               />
 
@@ -479,290 +407,391 @@ export default function Home() {
             </div>
           </section>
 
-          <section
-            style={sectionStyle}
-          >
+          <section style={sectionStyle}>
             <div
               style={{
                 display: "flex",
-                justifyContent:
-                  "space-between",
+                justifyContent: "space-between",
                 alignItems: "center",
                 marginBottom: "20px",
               }}
             >
-              <h2>
-                Składniki
-              </h2>
+              <h2 style={{ margin: 0 }}>Składniki</h2>
 
               <button
-                onClick={
-                  addIngredient
-                }
-                style={
-                  primaryButtonStyle
-                }
+                onClick={addIngredient}
+                style={primaryButtonStyle}
               >
                 + Dodaj składnik
               </button>
             </div>
 
-            <div
-              style={{
-                overflowX: "auto",
-              }}
-            >
+            <div style={{ overflowX: "auto" }}>
               <table
                 style={{
                   width: "100%",
-                  borderCollapse:
-                    "collapse",
-                  minWidth:
-                    "700px",
+                  borderCollapse: "collapse",
+                  minWidth: "700px",
                 }}
               >
                 <thead>
                   <tr>
-                    <th
-                      style={thStyle}
-                    >
-                      Składnik
-                    </th>
-                    <th
-                      style={thStyle}
-                    >
-                      Ilość
-                    </th>
-                    <th
-                      style={thStyle}
-                    >
-                      Jednostka
-                    </th>
-                    <th
-                      style={thStyle}
-                    >
-                      Cena / jednostkę
-                    </th>
-                    <th
-                      style={thStyle}
-                    >
-                      Koszt
-                    </th>
-                    <th
-                      style={thStyle}
-                    />
+                    <th style={thStyle}>Składnik</th>
+                    <th style={thStyle}>Ilość</th>
+                    <th style={thStyle}>Jednostka</th>
+                    <th style={thStyle}>Cena / jednostkę</th>
+                    <th style={thStyle}>Koszt</th>
+                    <th style={thStyle}></th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {ingredients.map(
-                    (ingredient) => {
-                      const cost =
-                        ingredient.quantity *
-                        ingredient.price;
+                  {ingredients.map((ingredient) => {
+                    const cost =
+                      ingredient.quantity * ingredient.price;
 
-                      return (
-                        <tr
-                          key={
-                            ingredient.id
-                          }
-                        >
-                          <td
-                            style={
-                              tdStyle
+                    return (
+                      <tr key={ingredient.id}>
+                        <td style={tdStyle}>
+                          <input
+                            value={ingredient.name}
+                            onChange={(e) =>
+                              updateIngredient(
+                                ingredient.id,
+                                "name",
+                                e.target.value
+                              )
                             }
-                          >
-                            <input
-                              value={
-                                ingredient.name
-                              }
-                              onChange={(
-                                e
-                              ) =>
-                                updateIngredient(
-                                  ingredient.id,
-                                  "name",
-                                  e.target
-                                    .value
-                                )
-                              }
-                              style={
-                                inputStyle
-                              }
-                            />
-                          </td>
+                            placeholder="Nazwa"
+                            style={inputStyle}
+                          />
+                        </td>
 
-                          <td
-                            style={
-                              tdStyle
+                        <td style={tdStyle}>
+                          <input
+                            type="number"
+                            min="0"
+                            value={ingredient.quantity}
+                            onChange={(e) =>
+                              updateIngredient(
+                                ingredient.id,
+                                "quantity",
+                                e.target.value
+                              )
                             }
-                          >
-                            <input
-                              type="number"
-                              value={
-                                ingredient.quantity
-                              }
-                              onChange={(
-                                e
-                              ) =>
-                                updateIngredient(
-                                  ingredient.id,
-                                  "quantity",
-                                  e.target
-                                    .value
-                                )
-                              }
-                              style={
-                                inputStyle
-                              }
-                            />
-                          </td>
+                            style={inputStyle}
+                          />
+                        </td>
 
-                          <td
-                            style={
-                              tdStyle
+                        <td style={tdStyle}>
+                          <select
+                            value={ingredient.unit}
+                            onChange={(e) =>
+                              updateIngredient(
+                                ingredient.id,
+                                "unit",
+                                e.target.value
+                              )
                             }
+                            style={inputStyle}
                           >
-                            <select
-                              value={
-                                ingredient.unit
-                              }
-                              onChange={(
-                                e
-                              ) =>
-                                updateIngredient(
-                                  ingredient.id,
-                                  "unit",
-                                  e.target
-                                    .value
-                                )
-                              }
-                              style={
-                                inputStyle
-                              }
-                            >
-                              <option value="g">
-                                g
-                              </option>
-                              <option value="kg">
-                                kg
-                              </option>
-                              <option value="ml">
-                                ml
-                              </option>
-                              <option value="l">
-                                l
-                              </option>
-                              <option value="szt.">
-                                szt.
-                              </option>
-                            </select>
-                          </td>
+                            <option value="g">g</option>
+                            <option value="kg">kg</option>
+                            <option value="ml">ml</option>
+                            <option value="l">l</option>
+                            <option value="szt.">szt.</option>
+                          </select>
+                        </td>
 
-                          <td
-                            style={
-                              tdStyle
+                        <td style={tdStyle}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={ingredient.price}
+                            onChange={(e) =>
+                              updateIngredient(
+                                ingredient.id,
+                                "price",
+                                e.target.value
+                              )
                             }
-                          >
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={
-                                ingredient.price
-                              }
-                              onChange={(
-                                e
-                              ) =>
-                                updateIngredient(
-                                  ingredient.id,
-                                  "price",
-                                  e.target
-                                    .value
-                                )
-                              }
-                              style={
-                                inputStyle
-                              }
-                            />
-                          </td>
+                            style={inputStyle}
+                          />
+                        </td>
 
-                          <td
-                            style={
-                              tdStyle
-                            }
-                          >
-                            <strong>
-                              {formatMoney(
-                                cost
-                              )}{" "}
-                              zł
-                            </strong>
-                          </td>
+                        <td style={tdStyle}>
+                          <strong>
+                            {cost.toFixed(2).replace(".", ",")} zł
+                          </strong>
+                        </td>
 
-                          <td
-                            style={
-                              tdStyle
+                        <td style={tdStyle}>
+                          <button
+                            onClick={() =>
+                              removeIngredient(ingredient.id)
                             }
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              color: "#9b4d43",
+                              cursor: "pointer",
+                            }}
                           >
-                            <button
-                              onClick={() =>
-                                removeIngredient(
-                                  ingredient.id
-                                )
-                              }
-                              style={{
-                                border:
-                                  "none",
-                                background:
-                                  "transparent",
-                                color:
-                                  "#9b4d43",
-                                cursor:
-                                  "pointer",
-                              }}
-                            >
-                              Usuń
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    }
-                  )}
+                            Usuń
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </section>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "16px",
-            }}
-          >
+          <section style={gridStyle}>
             <ResultCard
               title="Koszt składników"
-              value={`${formatMoney(
-                totalCost
-              )} zł`}
+              value={`${totalCost.toFixed(2).replace(".", ",")} zł`}
             />
 
             <ResultCard
               title="Zysk"
-              value={`${formatMoney(
-                profit
-              )} zł`}
+              value={`${profit.toFixed(2).replace(".", ",")} zł`}
             />
 
             <ResultCard
               title="Sugerowana cena"
-              value={`${formatMoney(
-                sellingPrice
-              )} zł`}
+              value={`${sellingPrice
+                .toFixed(2)
+                .replace(".", ",")} zł`}
               highlighted
             />
+          </section>
+
+          <section
+            style={{
+              ...sectionStyle,
+              marginTop: "20px",
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>
+              Podsumowanie tortu
+            </h2>
+
+            <p>
+              <strong>Nazwa:</strong>{" "}
+              {cakeName || "Nie podano"}
+            </p>
+
+            <p>
+              <strong>Średnica:</strong>{" "}
+              {diameter ? `${diameter} cm` : "Nie podano"}
+            </p>
+
+            <p>
+              <strong>Porcje:</strong>{" "}
+              {servings || "Nie podano"}
+            </p>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+  if (view === "products") {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          background: "#faf8f5",
+          color: "#292522",
+          fontFamily: "Arial, sans-serif",
+          padding: "30px 20px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: "1100px",
+            margin: "0 auto",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "25px",
+            }}
+          >
+            <button
+              onClick={() => setView("dashboard")}
+              style={backButtonStyle}
+            >
+              ← Powrót do panelu
+            </button>
+
+            <button onClick={logout} style={logoutButtonStyle}>
+              Wyloguj
+            </button>
           </div>
+
+          <header style={{ marginBottom: "30px" }}>
+            <div style={brandStyle}>Délice</div>
+
+            <h1 style={{ fontSize: "38px", margin: 0 }}>
+              Produkty
+            </h1>
+
+            <p style={{ color: "#716b65", fontSize: "16px" }}>
+              Dodawaj produkty, ceny zakupu, opakowania i jednostki.
+            </p>
+          </header>
+
+          <section style={sectionStyle}>
+            <h2 style={{ marginTop: 0 }}>
+              Dodaj produkt
+            </h2>
+
+            <div style={gridStyle}>
+              <Input
+                label="Nazwa produktu"
+                value={productName}
+                onChange={setProductName}
+                placeholder="np. Mąka tortowa"
+              />
+
+              <Input
+                label="Cena zakupu"
+                value={purchasePrice}
+                onChange={setPurchasePrice}
+                placeholder="np. 4,99"
+                type="number"
+              />
+
+              <Input
+                label="Wielkość opakowania"
+                value={packageSize}
+                onChange={setPackageSize}
+                placeholder="np. 1000"
+                type="number"
+              />
+
+              <label>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "#716b65",
+                    marginBottom: "7px",
+                  }}
+                >
+                  Jednostka
+                </div>
+
+                <select
+                  value={productUnit}
+                  onChange={(e) =>
+                    setProductUnit(e.target.value)
+                  }
+                  style={inputStyle}
+                >
+                  <option value="g">g</option>
+                  <option value="kg">kg</option>
+                  <option value="ml">ml</option>
+                  <option value="l">l</option>
+                  <option value="szt.">szt.</option>
+                </select>
+              </label>
+            </div>
+
+            <button
+              onClick={addProduct}
+              style={{
+                ...primaryButtonStyle,
+                marginTop: "20px",
+              }}
+            >
+              + Dodaj produkt
+            </button>
+          </section>
+
+          <section style={sectionStyle}>
+            <h2 style={{ marginTop: 0 }}>
+              Lista produktów
+            </h2>
+
+            {products.length === 0 ? (
+              <p
+                style={{
+                  color: "#716b65",
+                  marginBottom: 0,
+                }}
+              >
+                Nie dodano jeszcze żadnych produktów.
+              </p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    minWidth: "700px",
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Produkt</th>
+                      <th style={thStyle}>Cena zakupu</th>
+                      <th style={thStyle}>Opakowanie</th>
+                      <th style={thStyle}>Jednostka</th>
+                      <th style={thStyle}></th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {products.map((product) => (
+                      <tr key={product.id}>
+                        <td style={tdStyle}>
+                          <strong>{product.name}</strong>
+                        </td>
+
+                        <td style={tdStyle}>
+                          {product.purchasePrice
+                            .toFixed(2)
+                            .replace(".", ",")}{" "}
+                          zł
+                        </td>
+
+                        <td style={tdStyle}>
+                          {product.packageSize}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {product.unit}
+                        </td>
+
+                        <td style={tdStyle}>
+                          <button
+                            onClick={() =>
+                              removeProduct(product.id)
+                            }
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              color: "#9b4d43",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Usuń
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </div>
       </main>
     );
@@ -770,102 +799,71 @@ export default function Home() {
 
   return (
     <main
-      style={pageStyle}
+      style={{
+        minHeight: "100vh",
+        background: "#faf8f5",
+        color: "#292522",
+        fontFamily: "Arial, sans-serif",
+        padding: "40px 20px",
+      }}
     >
       <div
-        style={containerStyle}
+        style={{
+          maxWidth: "1100px",
+          margin: "0 auto",
+        }}
       >
         <header
           style={{
-            marginBottom: "40px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent:
-                "space-between",
-              alignItems: "flex-start",
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: "14px",
-                  letterSpacing: "3px",
-                  textTransform:
-                    "uppercase",
-                  color: "#8a6d4b",
-                }}
-              >
-                Délice
-              </div>
-
-              <h1
-                style={{
-                  fontSize: "42px",
-                  margin:
-                    "8px 0",
-                }}
-              >
-                Kalkulator tortów
-              </h1>
-
-              <p
-                style={{
-                  color: "#716b65",
-                  fontSize: "17px",
-                }}
-              >
-                Zarządzaj recepturami,
-                kosztami i zamówieniami
-                w jednym miejscu.
-              </p>
-            </div>
-
-            <button
-              onClick={logout}
-              style={{
-                border:
-                  "1px solid #ddd3c9",
-                background:
-                  "#ffffff",
-                color: "#716b65",
-                borderRadius:
-                  "9px",
-                padding:
-                  "10px 14px",
-                cursor:
-                  "pointer",
-              }}
-            >
-              Wyloguj
-            </button>
-          </div>
-        </header>
-
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(220px, 1fr))",
+            marginBottom: "25px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
             gap: "20px",
           }}
         >
+          <div>
+            <div style={brandStyle}>Délice</div>
+
+            <h1
+              style={{
+                fontSize: "42px",
+                margin: 0,
+              }}
+            >
+              Kalkulator tortów
+            </h1>
+
+            <p
+              style={{
+                color: "#716b65",
+                fontSize: "17px",
+                marginTop: "12px",
+              }}
+            >
+              Zarządzaj recepturami, kosztami i zamówieniami w jednym miejscu.
+            </p>
+          </div>
+
+          <button
+            onClick={logout}
+            style={logoutButtonStyle}
+          >
+            Wyloguj
+          </button>
+        </header>
+
+        <section style={gridStyle}>
           <DashboardCard
             title="Nowy tort"
             description="Oblicz składniki, koszt i cenę sprzedaży."
-            onClick={() =>
-              setView("newCake")
-            }
+            onClick={() => setView("newCake")}
           />
 
           <DashboardCard
             title="Produkty"
-            description="Zarządzaj produktami i ich aktualnymi cenami."
-            onClick={() =>
-              setView("products")
-            }
+            description="Dodawaj produkty, ceny zakupu, opakowania i jednostki."
+            onClick={() => setView("products")}
           />
 
           <DashboardCard
@@ -885,37 +883,15 @@ export default function Home() {
             marginTop: "40px",
           }}
         >
-          <h2>
+          <h2 style={{ marginTop: 0 }}>
             Podsumowanie
           </h2>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: "20px",
-            }}
-          >
-            <Stat
-              title="Zamówienia"
-              value="0"
-            />
-
-            <Stat
-              title="Torty"
-              value="0"
-            />
-
-            <Stat
-              title="Sprzedaż"
-              value="0,00 zł"
-            />
-
-            <Stat
-              title="Zysk"
-              value="0,00 zł"
-            />
+          <div style={gridStyle}>
+            <Stat title="Zamówienia" value="0" />
+            <Stat title="Torty" value="0" />
+            <Stat title="Sprzedaż" value="0,00 zł" />
+            <Stat title="Zysk" value="0,00 zł" />
           </div>
         </section>
       </div>
@@ -938,15 +914,12 @@ function DashboardCard({
       disabled={!onClick}
       style={{
         background: "#ffffff",
-        border:
-          "1px solid #e9e2da",
+        border: "1px solid #e9e2da",
         borderRadius: "18px",
         padding: "26px",
         minHeight: "150px",
         textAlign: "left",
-        cursor: onClick
-          ? "pointer"
-          : "default",
+        cursor: onClick ? "pointer" : "default",
         color: "#292522",
         width: "100%",
       }}
@@ -983,16 +956,18 @@ function Input({
 }: {
   label: string;
   value: string;
-  onChange: (
-    value: string
-  ) => void;
+  onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
 }) {
   return (
-    <label>
+    <label style={{ display: "block" }}>
       <div
-        style={labelStyle}
+        style={{
+          fontSize: "13px",
+          color: "#716b65",
+          marginBottom: "7px",
+        }}
       >
         {label}
       </div>
@@ -1001,11 +976,7 @@ function Input({
         type={type}
         value={value}
         placeholder={placeholder}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-          )
-        }
+        onChange={(e) => onChange(e.target.value)}
         style={inputStyle}
       />
     </label>
@@ -1024,16 +995,9 @@ function ResultCard({
   return (
     <div
       style={{
-        background:
-          highlighted
-            ? "#8a6d4b"
-            : "#ffffff",
-        color:
-          highlighted
-            ? "#ffffff"
-            : "#292522",
-        border:
-          "1px solid #e9e2da",
+        background: highlighted ? "#8a6d4b" : "#ffffff",
+        color: highlighted ? "#ffffff" : "#292522",
+        border: "1px solid #e9e2da",
         borderRadius: "18px",
         padding: "25px",
       }}
@@ -1041,23 +1005,16 @@ function ResultCard({
       <div
         style={{
           fontSize: "13px",
-          textTransform:
-            "uppercase",
-          letterSpacing:
-            "1px",
-          marginBottom:
-            "10px",
+          textTransform: "uppercase",
+          letterSpacing: "1px",
+          marginBottom: "10px",
           opacity: 0.8,
         }}
       >
         {title}
       </div>
 
-      <strong
-        style={{
-          fontSize: "28px",
-        }}
-      >
+      <strong style={{ fontSize: "28px" }}>
         {value}
       </strong>
     </div>
@@ -1077,85 +1034,52 @@ function Stat({
         style={{
           color: "#8a6d4b",
           fontSize: "13px",
-          textTransform:
-            "uppercase",
-          letterSpacing:
-            "1px",
-          marginBottom:
-            "8px",
+          textTransform: "uppercase",
+          letterSpacing: "1px",
+          marginBottom: "8px",
         }}
       >
         {title}
       </div>
 
-      <strong
-        style={{
-          fontSize: "26px",
-        }}
-      >
+      <strong style={{ fontSize: "26px" }}>
         {value}
       </strong>
     </div>
   );
 }
 
-function formatMoney(
-  value: number
-) {
-  return value
-    .toFixed(2)
-    .replace(".", ",");
-}
-
-const pageStyle = {
-  minHeight: "100vh",
-  background: "#faf8f5",
-  color: "#292522",
-  fontFamily:
-    "Arial, sans-serif",
-  padding: "30px 20px",
-};
-
-const containerStyle = {
-  maxWidth: "1100px",
-  margin: "0 auto",
+const brandStyle = {
+  fontSize: "14px",
+  letterSpacing: "3px",
+  textTransform: "uppercase" as const,
+  color: "#8a6d4b",
+  marginBottom: "8px",
 };
 
 const sectionStyle = {
   background: "#ffffff",
-  border:
-    "1px solid #e9e2da",
+  border: "1px solid #e9e2da",
   borderRadius: "18px",
   padding: "25px",
 };
 
+const gridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "20px",
+};
+
 const inputStyle = {
   width: "100%",
-  boxSizing:
-    "border-box" as const,
-  padding: "12px",
-  border:
-    "1px solid #ddd3c9",
+  boxSizing: "border-box" as const,
+  padding: "11px 12px",
+  border: "1px solid #ddd3c9",
   borderRadius: "9px",
-  background: "#ffffff",
+  background: "#fff",
   color: "#292522",
   fontSize: "14px",
-};
-
-const labelStyle = {
-  fontSize: "13px",
-  color: "#716b65",
-  marginBottom: "7px",
-};
-
-const backButtonStyle = {
-  border: "none",
-  background: "transparent",
-  color: "#8a6d4b",
-  cursor: "pointer",
-  fontSize: "15px",
-  padding: 0,
-  marginBottom: "20px",
 };
 
 const primaryButtonStyle = {
@@ -1168,18 +1092,33 @@ const primaryButtonStyle = {
   fontWeight: 600,
 };
 
+const backButtonStyle = {
+  border: "none",
+  background: "transparent",
+  color: "#8a6d4b",
+  cursor: "pointer",
+  fontSize: "15px",
+  padding: 0,
+};
+
+const logoutButtonStyle = {
+  border: "1px solid #ddd3c9",
+  background: "#ffffff",
+  color: "#8a6d4b",
+  borderRadius: "10px",
+  padding: "9px 14px",
+  cursor: "pointer",
+};
+
 const thStyle = {
   padding: "12px 8px",
-  borderBottom:
-    "1px solid #e9e2da",
+  borderBottom: "1px solid #e9e2da",
   color: "#716b65",
   fontSize: "13px",
-  textAlign:
-    "left" as const,
+  textAlign: "left" as const,
 };
 
 const tdStyle = {
   padding: "10px 8px",
-  borderBottom:
-    "1px solid #f0ebe6",
+  borderBottom: "1px solid #f0ebe6",
 };
