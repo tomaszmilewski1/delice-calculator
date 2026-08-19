@@ -38,7 +38,9 @@ type IngredientWithProduct = RecipeIngredient & {
 export default function CakeCalculator() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [ingredients, setIngredients] = useState<IngredientWithProduct[]>([]);
+  const [ingredients, setIngredients] = useState<
+    IngredientWithProduct[]
+  >([]);
 
   const [recipeId, setRecipeId] = useState("");
   const [diameter, setDiameter] = useState("");
@@ -46,7 +48,8 @@ export default function CakeCalculator() {
   const [portions, setPortions] = useState("");
 
   const [loading, setLoading] = useState(true);
-  const [loadingIngredients, setLoadingIngredients] = useState(false);
+  const [loadingIngredients, setLoadingIngredients] =
+    useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -100,7 +103,9 @@ export default function CakeCalculator() {
     setLoading(false);
   }
 
-  async function loadIngredients(selectedRecipeId: string) {
+  async function loadIngredients(
+    selectedRecipeId: string
+  ) {
     if (!selectedRecipeId) {
       setIngredients([]);
       return;
@@ -109,10 +114,14 @@ export default function CakeCalculator() {
     setLoadingIngredients(true);
     setError("");
 
-    const { data, error: ingredientsError } = await supabase
-      .from("recipe_ingredients")
-      .select("id, recipe_id, product_id, quantity, unit")
-      .eq("recipe_id", selectedRecipeId);
+    const { data, error: ingredientsError } =
+      await supabase
+        .from("recipe_ingredients")
+        .select(
+          "id, recipe_id, product_id, quantity, unit"
+        )
+        .eq("recipe_id", selectedRecipeId)
+        .order("id", { ascending: true });
 
     if (ingredientsError) {
       setError(
@@ -123,7 +132,8 @@ export default function CakeCalculator() {
       return;
     }
 
-    const ingredientRows = (data ?? []) as RecipeIngredient[];
+    const ingredientRows =
+      (data ?? []) as RecipeIngredient[];
 
     const combined = ingredientRows
       .map((ingredient) => {
@@ -143,7 +153,8 @@ export default function CakeCalculator() {
       .filter(
         (
           item
-        ): item is IngredientWithProduct => item !== null
+        ): item is IngredientWithProduct =>
+          item !== null
       );
 
     setIngredients(combined);
@@ -157,27 +168,54 @@ export default function CakeCalculator() {
       (recipe) => recipe.id === value
     );
 
-    if (selectedRecipe) {
-      if (
-        selectedRecipe.diameter_cm !== null &&
-        selectedRecipe.diameter_cm !== undefined
-      ) {
-        setDiameter(String(selectedRecipe.diameter_cm));
-      }
+    if (!selectedRecipe) {
+      setDiameter("");
+      setHeight("");
+      setPortions("");
+      setIngredients([]);
+      return;
+    }
 
-      if (
-        selectedRecipe.height_cm !== null &&
-        selectedRecipe.height_cm !== undefined
-      ) {
-        setHeight(String(selectedRecipe.height_cm));
-      }
+    if (
+      selectedRecipe.diameter_cm !== null &&
+      selectedRecipe.diameter_cm !== undefined
+    ) {
+      setDiameter(
+        String(selectedRecipe.diameter_cm).replace(
+          ".",
+          ","
+        )
+      );
+    } else {
+      setDiameter("");
+    }
 
-      if (
-        selectedRecipe.portions !== null &&
-        selectedRecipe.portions !== undefined
-      ) {
-        setPortions(String(selectedRecipe.portions));
-      }
+    if (
+      selectedRecipe.height_cm !== null &&
+      selectedRecipe.height_cm !== undefined
+    ) {
+      setHeight(
+        String(selectedRecipe.height_cm).replace(
+          ".",
+          ","
+        )
+      );
+    } else {
+      setHeight("");
+    }
+
+    if (
+      selectedRecipe.portions !== null &&
+      selectedRecipe.portions !== undefined
+    ) {
+      setPortions(
+        String(selectedRecipe.portions).replace(
+          ".",
+          ","
+        )
+      );
+    } else {
+      setPortions("");
     }
 
     loadIngredients(value);
@@ -210,58 +248,320 @@ export default function CakeCalculator() {
 
   const diameterScale =
     baseDiameter &&
+    baseDiameter > 0 &&
     currentDiameter > 0
-      ? Math.pow(currentDiameter / baseDiameter, 2)
+      ? Math.pow(
+          currentDiameter / baseDiameter,
+          2
+        )
       : 1;
 
   const heightScale =
     baseHeight &&
+    baseHeight > 0 &&
     currentHeight > 0
       ? currentHeight / baseHeight
       : 1;
 
   const portionScale =
     basePortions &&
+    basePortions > 0 &&
     currentPortions > 0
       ? currentPortions / basePortions
       : 1;
 
+  /*
+   * Skala końcowa:
+   * - średnica wpływa powierzchnią
+   * - wysokość wpływa liniowo
+   * - porcje dodatkowo pozwalają ręcznie zwiększyć/zmniejszyć
+   *   recepturę
+   */
   const scale =
-    diameterScale * heightScale;
+    diameterScale *
+    heightScale *
+    portionScale;
 
-  const calculatedIngredients = useMemo(() => {
-    return ingredients.map((ingredient) => {
-      const quantity = Number(ingredient.quantity) || 0;
+  /*
+   * Przeliczanie jednostek.
+   *
+   * Dzięki temu:
+   * 500 g mąki z opakowania 1 kg
+   * = 500 / 1000 * cena opakowania
+   * = 2,50 zł przy cenie 5 zł/kg.
+   *
+   * Obsługujemy:
+   * g / kg
+   * ml / l
+   * szt
+   */
+  function unitToBase(
+    value: number,
+    unit: string
+  ): number {
+    const normalized = unit
+      .trim()
+      .toLowerCase()
+      .replace(" ", "");
 
-      const scaledQuantity =
-        quantity * scale;
+    switch (normalized) {
+      case "kg":
+      case "kilogram":
+      case "kilogramy":
+      case "kilogramów":
+        return value * 1000;
 
-      const packageQuantity =
-        Number(ingredient.product.package_quantity) || 0;
+      case "g":
+      case "gram":
+      case "gramy":
+      case "gramów":
+        return value;
 
-      const packagePrice =
-        Number(ingredient.product.package_price) || 0;
+      case "l":
+      case "litry":
+      case "litr":
+      case "litrów":
+        return value * 1000;
 
-      let cost = 0;
+      case "ml":
+      case "mililitr":
+      case "mililitry":
+      case "mililitrów":
+        return value;
 
-      if (packageQuantity > 0) {
-        cost =
-          (scaledQuantity / packageQuantity) *
-          packagePrice;
+      case "szt":
+      case "szt.":
+      case "sztuka":
+      case "sztuki":
+      case "sztuk":
+        return value;
+
+      default:
+        return value;
+    }
+  }
+
+  function calculateCost(
+    quantity: number,
+    quantityUnit: string,
+    packageQuantity: number,
+    packageUnit: string,
+    packagePrice: number
+  ) {
+    if (
+      quantity <= 0 ||
+      packageQuantity <= 0 ||
+      packagePrice < 0
+    ) {
+      return 0;
+    }
+
+    const quantityUnitNormalized = quantityUnit
+      .trim()
+      .toLowerCase()
+      .replace(" ", "");
+
+    const packageUnitNormalized = packageUnit
+      .trim()
+      .toLowerCase()
+      .replace(" ", "");
+
+    /*
+     * sztuki liczymy bezpośrednio.
+     */
+    const quantityIsPieces =
+      quantityUnitNormalized === "szt" ||
+      quantityUnitNormalized === "szt." ||
+      quantityUnitNormalized === "sztuka" ||
+      quantityUnitNormalized === "sztuki" ||
+      quantityUnitNormalized === "sztuk";
+
+    const packageIsPieces =
+      packageUnitNormalized === "szt" ||
+      packageUnitNormalized === "szt." ||
+      packageUnitNormalized === "sztuka" ||
+      packageUnitNormalized === "sztuki" ||
+      packageUnitNormalized === "sztuk";
+
+    if (
+      quantityIsPieces &&
+      packageIsPieces
+    ) {
+      return (
+        (quantity / packageQuantity) *
+        packagePrice
+      );
+    }
+
+    /*
+     * Jeżeli obie jednostki są wagowe,
+     * przeliczamy wszystko na gramy.
+     */
+    const weightUnits = [
+      "g",
+      "gram",
+      "gramy",
+      "gramów",
+      "kg",
+      "kilogram",
+      "kilogramy",
+      "kilogramów",
+    ];
+
+    const quantityIsWeight =
+      weightUnits.includes(
+        quantityUnitNormalized
+      );
+
+    const packageIsWeight =
+      weightUnits.includes(
+        packageUnitNormalized
+      );
+
+    if (
+      quantityIsWeight &&
+      packageIsWeight
+    ) {
+      const quantityInGrams =
+        unitToBase(
+          quantity,
+          quantityUnit
+        );
+
+      const packageInGrams =
+        unitToBase(
+          packageQuantity,
+          packageUnit
+        );
+
+      if (packageInGrams <= 0) {
+        return 0;
       }
 
-      return {
-        ...ingredient,
-        scaledQuantity,
-        cost,
-      };
-    });
-  }, [ingredients, scale]);
+      return (
+        (quantityInGrams /
+          packageInGrams) *
+        packagePrice
+      );
+    }
 
-  const ingredientsCost = calculatedIngredients.reduce(
-    (sum, ingredient) => sum + ingredient.cost,
-    0
-  );
+    /*
+     * Jeżeli obie jednostki są objętościowe,
+     * przeliczamy wszystko na ml.
+     */
+    const volumeUnits = [
+      "ml",
+      "mililitr",
+      "mililitry",
+      "mililitrów",
+      "l",
+      "litr",
+      "litry",
+      "litrów",
+    ];
+
+    const quantityIsVolume =
+      volumeUnits.includes(
+        quantityUnitNormalized
+      );
+
+    const packageIsVolume =
+      volumeUnits.includes(
+        packageUnitNormalized
+      );
+
+    if (
+      quantityIsVolume &&
+      packageIsVolume
+    ) {
+      const quantityInMl =
+        unitToBase(
+          quantity,
+          quantityUnit
+        );
+
+      const packageInMl =
+        unitToBase(
+          packageQuantity,
+          packageUnit
+        );
+
+      if (packageInMl <= 0) {
+        return 0;
+      }
+
+      return (
+        (quantityInMl /
+          packageInMl) *
+        packagePrice
+      );
+    }
+
+    /*
+     * Awaryjnie, jeżeli jednostki są takie same.
+     */
+    if (
+      quantityUnitNormalized ===
+      packageUnitNormalized
+    ) {
+      return (
+        (quantity / packageQuantity) *
+        packagePrice
+      );
+    }
+
+    /*
+     * Ostateczny fallback dla nieznanych jednostek.
+     */
+    return (
+      (quantity / packageQuantity) *
+      packagePrice
+    );
+  }
+
+  const calculatedIngredients =
+    useMemo(() => {
+      return ingredients.map((ingredient) => {
+        const quantity =
+          Number(ingredient.quantity) || 0;
+
+        const scaledQuantity =
+          quantity * scale;
+
+        const packageQuantity =
+          Number(
+            ingredient.product
+              .package_quantity
+          ) || 0;
+
+        const packagePrice =
+          Number(
+            ingredient.product
+              .package_price
+          ) || 0;
+
+        const cost = calculateCost(
+          scaledQuantity,
+          ingredient.unit,
+          packageQuantity,
+          ingredient.product.unit,
+          packagePrice
+        );
+
+        return {
+          ...ingredient,
+          scaledQuantity,
+          cost,
+        };
+      });
+    }, [ingredients, scale]);
+
+  const ingredientsCost =
+    calculatedIngredients.reduce(
+      (sum, ingredient) =>
+        sum + ingredient.cost,
+      0
+    );
 
   const totalCost = ingredientsCost;
 
@@ -303,8 +603,9 @@ export default function CakeCalculator() {
           </h2>
 
           <p style={subtitleStyle}>
-            Wybierz recepturę, podaj rozmiar tortu
-            i otrzymaj automatyczne wyliczenie kosztu.
+            Wybierz recepturę, podaj rozmiar
+            tortu i otrzymaj automatyczne
+            wyliczenie kosztu.
           </p>
         </div>
       </div>
@@ -322,7 +623,8 @@ export default function CakeCalculator() {
           </h3>
 
           <p style={cardSubtitleStyle}>
-            Dane możesz zmienić w dowolnym momencie.
+            Dane możesz zmienić w dowolnym
+            momencie.
           </p>
 
           <label style={labelStyle}>
@@ -333,7 +635,9 @@ export default function CakeCalculator() {
             <select
               value={recipeId}
               onChange={(event) =>
-                handleRecipeChange(event.target.value)
+                handleRecipeChange(
+                  event.target.value
+                )
               }
               style={inputStyle}
             >
@@ -358,13 +662,19 @@ export default function CakeCalculator() {
                 Średnica
               </span>
 
-              <div style={inputWithSuffixStyle}>
+              <div
+                style={
+                  inputWithSuffixStyle
+                }
+              >
                 <input
                   type="text"
                   inputMode="decimal"
                   value={diameter}
                   onChange={(event) =>
-                    setDiameter(event.target.value)
+                    setDiameter(
+                      event.target.value
+                    )
                   }
                   placeholder="np. 20"
                   style={inputStyle}
@@ -381,13 +691,19 @@ export default function CakeCalculator() {
                 Wysokość
               </span>
 
-              <div style={inputWithSuffixStyle}>
+              <div
+                style={
+                  inputWithSuffixStyle
+                }
+              >
                 <input
                   type="text"
                   inputMode="decimal"
                   value={height}
                   onChange={(event) =>
-                    setHeight(event.target.value)
+                    setHeight(
+                      event.target.value
+                    )
                   }
                   placeholder="np. 10"
                   style={inputStyle}
@@ -409,7 +725,9 @@ export default function CakeCalculator() {
                 inputMode="numeric"
                 value={portions}
                 onChange={(event) =>
-                  setPortions(event.target.value)
+                  setPortions(
+                    event.target.value
+                  )
                 }
                 placeholder="np. 12"
                 style={inputStyle}
@@ -425,21 +743,29 @@ export default function CakeCalculator() {
 
               {selectedRecipe.description && (
                 <p style={infoTextStyle}>
-                  {selectedRecipe.description}
+                  {
+                    selectedRecipe.description
+                  }
                 </p>
               )}
 
               <div style={baseInfoStyle}>
                 Bazowa receptura:{" "}
                 {baseDiameter
-                  ? `${baseDiameter} cm`
+                  ? `${formatNumber(
+                      baseDiameter
+                    )} cm`
                   : "—"}{" "}
                 ×{" "}
                 {baseHeight
-                  ? `${baseHeight} cm`
+                  ? `${formatNumber(
+                      baseHeight
+                    )} cm`
                   : "—"}{" "}
                 {basePortions
-                  ? `• ${basePortions} porcji`
+                  ? `• ${formatNumber(
+                      basePortions
+                    )} porcji`
                   : ""}
               </div>
             </div>
@@ -454,8 +780,9 @@ export default function CakeCalculator() {
               </h3>
 
               <p style={cardSubtitleStyle}>
-                Automatycznie przeliczony na podstawie
-                receptury i cen produktów.
+                Automatycznie przeliczony na
+                podstawie receptury i cen
+                produktów.
               </p>
             </div>
 
@@ -479,8 +806,9 @@ export default function CakeCalculator() {
               </strong>
 
               <p style={emptyTextStyle}>
-                Po wybraniu receptury zobaczysz wszystkie
-                składniki i ich koszt.
+                Po wybraniu receptury
+                zobaczysz wszystkie składniki
+                i ich koszt.
               </p>
             </div>
           ) : ingredients.length === 0 ? (
@@ -494,8 +822,8 @@ export default function CakeCalculator() {
               </strong>
 
               <p style={emptyTextStyle}>
-                Ta receptura nie ma jeszcze przypisanych
-                produktów.
+                Ta receptura nie ma jeszcze
+                przypisanych produktów.
               </p>
             </div>
           ) : (
@@ -505,14 +833,27 @@ export default function CakeCalculator() {
                   (ingredient) => (
                     <div
                       key={ingredient.id}
-                      style={ingredientRowStyle}
+                      style={
+                        ingredientRowStyle
+                      }
                     >
                       <div>
-                        <div style={ingredientNameStyle}>
-                          {ingredient.product.name}
+                        <div
+                          style={
+                            ingredientNameStyle
+                          }
+                        >
+                          {
+                            ingredient.product
+                              .name
+                          }
                         </div>
 
-                        <div style={ingredientMetaStyle}>
+                        <div
+                          style={
+                            ingredientMetaStyle
+                          }
+                        >
                           Receptura:{" "}
                           {formatNumber(
                             Number(
@@ -521,17 +862,56 @@ export default function CakeCalculator() {
                           )}{" "}
                           {ingredient.unit}
                         </div>
+
+                        <div
+                          style={
+                            packageInfoStyle
+                          }
+                        >
+                          Opakowanie:{" "}
+                          {formatNumber(
+                            Number(
+                              ingredient
+                                .product
+                                .package_quantity
+                            )
+                          )}{" "}
+                          {
+                            ingredient.product
+                              .unit
+                          }{" "}
+                          •{" "}
+                          {formatMoney(
+                            Number(
+                              ingredient
+                                .product
+                                .package_price
+                            )
+                          )}
+                        </div>
                       </div>
 
-                      <div style={ingredientRightStyle}>
-                        <div style={quantityStyle}>
+                      <div
+                        style={
+                          ingredientRightStyle
+                        }
+                      >
+                        <div
+                          style={
+                            quantityStyle
+                          }
+                        >
                           {formatNumber(
                             ingredient.scaledQuantity
                           )}{" "}
                           {ingredient.unit}
                         </div>
 
-                        <strong style={ingredientCostStyle}>
+                        <strong
+                          style={
+                            ingredientCostStyle
+                          }
+                        >
                           {formatMoney(
                             ingredient.cost
                           )}
@@ -543,7 +923,9 @@ export default function CakeCalculator() {
               </div>
 
               <div style={summaryStyle}>
-                <div style={summaryRowStyle}>
+                <div
+                  style={summaryRowStyle}
+                >
                   <span>
                     Koszt składników
                   </span>
@@ -555,7 +937,9 @@ export default function CakeCalculator() {
                   </strong>
                 </div>
 
-                <div style={summaryRowStyle}>
+                <div
+                  style={summaryRowStyle}
+                >
                   <span>
                     Liczba porcji
                   </span>
@@ -597,22 +981,31 @@ export default function CakeCalculator() {
         </h3>
 
         <p style={formulaTextStyle}>
-          Każdy składnik jest przeliczany na podstawie
-          ilości potrzebnej do przygotowania tortu oraz
-          ceny opakowania produktu.
+          Każdy składnik jest przeliczany na
+          podstawie ilości potrzebnej do
+          przygotowania tortu oraz ceny
+          opakowania produktu.
         </p>
 
         <div style={formulaBoxStyle}>
           <strong>
             Koszt składnika =
           </strong>{" "}
-          ilość potrzebna ÷ ilość w opakowaniu × cena
-          opakowania
+          ilość potrzebna w jednostkach
+          produktu ÷ ilość w opakowaniu ×
+          cena opakowania
         </div>
 
         <p style={formulaTextStyle}>
-          Wielkość tortu jest skalowana względem średnicy
-          i wysokości zapisanej w bazowej recepturze.
+          Kalkulator automatycznie przelicza
+          jednostki, np. 1 kg = 1000 g oraz
+          1 l = 1000 ml.
+        </p>
+
+        <p style={formulaTextStyle}>
+          Wielkość tortu jest skalowana względem
+          średnicy, wysokości i liczby porcji
+          zapisanych w bazowej recepturze.
         </p>
       </div>
     </section>
@@ -624,6 +1017,10 @@ const pageStyle = {
 };
 
 const headerStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "20px",
   marginBottom: "24px",
 };
 
@@ -650,7 +1047,7 @@ const subtitleStyle = {
 const mainGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(300px, 430px) minmax(0, 1fr)",
+    "minmax(320px, 420px) minmax(0, 1fr)",
   gap: "20px",
   alignItems: "start",
 };
@@ -675,7 +1072,7 @@ const cardTitleStyle = {
 };
 
 const cardSubtitleStyle = {
-  margin: "6px 0 20px",
+  margin: "6px 0 22px",
   color: "#8a837d",
   fontSize: "13px",
   lineHeight: 1.5,
@@ -708,7 +1105,8 @@ const inputStyle = {
 
 const threeColumnStyle = {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr 1fr",
+  gridTemplateColumns:
+    "1fr 1fr 1fr",
   gap: "10px",
 };
 
@@ -718,33 +1116,33 @@ const inputWithSuffixStyle = {
 
 const suffixStyle = {
   position: "absolute" as const,
-  right: "11px",
+  right: "12px",
   top: "50%",
   transform: "translateY(-50%)",
-  color: "#8a837d",
+  color: "#9a928b",
   fontSize: "12px",
   pointerEvents: "none" as const,
 };
 
 const infoBoxStyle = {
-  marginTop: "5px",
+  marginTop: "6px",
+  background: "#fcfaf7",
+  border: "1px solid #eee7e0",
+  borderRadius: "11px",
   padding: "14px",
-  background: "#f8f4ef",
-  border: "1px solid #eadfd3",
-  borderRadius: "10px",
   color: "#514b46",
   fontSize: "13px",
 };
 
 const infoTextStyle = {
-  margin: "6px 0",
+  margin: "7px 0 0",
   color: "#716b65",
   lineHeight: 1.5,
 };
 
 const baseInfoStyle = {
-  marginTop: "8px",
-  color: "#8a6d4b",
+  marginTop: "9px",
+  color: "#8a837d",
   fontSize: "12px",
 };
 
@@ -757,16 +1155,16 @@ const resultHeaderStyle = {
 };
 
 const totalCostStyle = {
-  fontSize: "28px",
+  color: "#477451",
+  fontSize: "25px",
   fontWeight: 700,
-  color: "#8a6d4b",
   whiteSpace: "nowrap" as const,
 };
 
 const ingredientsListStyle = {
   display: "flex",
   flexDirection: "column" as const,
-  gap: "9px",
+  gap: "8px",
 };
 
 const ingredientRowStyle = {
@@ -774,46 +1172,52 @@ const ingredientRowStyle = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: "15px",
-  padding: "13px 14px",
   border: "1px solid #eee7e0",
   borderRadius: "11px",
+  padding: "12px",
 };
 
 const ingredientNameStyle = {
-  color: "#292522",
   fontSize: "14px",
-  fontWeight: 600,
+  fontWeight: 700,
+  color: "#292522",
 };
 
 const ingredientMetaStyle = {
   marginTop: "4px",
-  color: "#918981",
+  color: "#8a837d",
+  fontSize: "12px",
+};
+
+const packageInfoStyle = {
+  marginTop: "3px",
+  color: "#aaa19a",
   fontSize: "11px",
 };
 
 const ingredientRightStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "20px",
+  gap: "15px",
   flexShrink: 0,
 };
 
 const quantityStyle = {
   color: "#716b65",
   fontSize: "13px",
+  whiteSpace: "nowrap" as const,
 };
 
 const ingredientCostStyle = {
-  color: "#292522",
-  fontSize: "14px",
-  minWidth: "70px",
-  textAlign: "right" as const,
+  color: "#477451",
+  fontSize: "15px",
+  whiteSpace: "nowrap" as const,
 };
 
 const summaryStyle = {
   marginTop: "18px",
   paddingTop: "16px",
-  borderTop: "1px solid #e9e2da",
+  borderTop: "1px solid #eee7e0",
 };
 
 const summaryRowStyle = {
@@ -822,52 +1226,16 @@ const summaryRowStyle = {
   alignItems: "center",
   gap: "15px",
   padding: "7px 0",
-  color: "#716b65",
-  fontSize: "14px",
+  color: "#514b46",
+  fontSize: "13px",
 };
 
 const summaryTotalStyle = {
-  marginTop: "5px",
-  paddingTop: "13px",
+  marginTop: "6px",
+  paddingTop: "12px",
   borderTop: "1px solid #eee7e0",
-  color: "#292522",
-  fontSize: "16px",
-};
-
-const formulaCardStyle = {
-  marginTop: "20px",
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "18px",
-  padding: "22px 24px",
-};
-
-const formulaTitleStyle = {
-  margin: 0,
-  color: "#292522",
-  fontSize: "17px",
-};
-
-const formulaTextStyle = {
-  color: "#716b65",
-  fontSize: "13px",
-  lineHeight: 1.6,
-};
-
-const formulaBoxStyle = {
-  display: "inline-block",
-  padding: "12px 15px",
-  background: "#f8f4ef",
-  borderRadius: "9px",
-  color: "#8a6d4b",
-  fontSize: "13px",
-};
-
-const loadingStyle = {
-  padding: "30px",
-  textAlign: "center" as const,
-  color: "#8a837d",
-  fontSize: "14px",
+  color: "#477451",
+  fontSize: "15px",
 };
 
 const emptyStyle = {
@@ -895,10 +1263,19 @@ const emptyIconStyle = {
 };
 
 const emptyTextStyle = {
-  maxWidth: "400px",
   margin: "7px 0 0",
   fontSize: "13px",
+  maxWidth: "360px",
   lineHeight: 1.5,
+};
+
+const loadingStyle = {
+  minHeight: "120px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#8a837d",
+  fontSize: "13px",
 };
 
 const errorStyle = {
@@ -910,4 +1287,34 @@ const errorStyle = {
   marginBottom: "14px",
   fontSize: "13px",
   lineHeight: 1.5,
+};
+
+const formulaCardStyle = {
+  marginTop: "20px",
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "18px",
+  padding: "24px",
+};
+
+const formulaTitleStyle = {
+  margin: 0,
+  fontSize: "17px",
+  color: "#292522",
+};
+
+const formulaTextStyle = {
+  color: "#716b65",
+  fontSize: "13px",
+  lineHeight: 1.6,
+};
+
+const formulaBoxStyle = {
+  background: "#fcfaf7",
+  border: "1px solid #eee7e0",
+  borderRadius: "10px",
+  padding: "13px",
+  color: "#514b46",
+  fontSize: "13px",
+  margin: "14px 0",
 };
