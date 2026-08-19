@@ -532,6 +532,15 @@ export default function Recipes() {
     );
   }
 
+  /*
+   * Przelicza koszt składnika z uwzględnieniem jednostek.
+   *
+   * Przykłady:
+   * 1 kg mąki = 1000 g
+   * 500 g z opakowania 1 kg za 5,00 zł = 2,50 zł
+   *
+   * Jednostki szt. pozostają liczone bez przeliczania.
+   */
   function calculateIngredientCost(
     ingredient: RecipeIngredient
   ) {
@@ -552,9 +561,93 @@ export default function Recipes() {
       return 0;
     }
 
+    const recipeUnit = ingredient.unit
+      .trim()
+      .toLowerCase();
+
+    const productUnit = product.unit
+      .trim()
+      .toLowerCase();
+
+    let ingredientQuantity =
+      ingredient.quantity;
+
+    let packageQuantity =
+      product.package_quantity;
+
+    /*
+     * Produkt w bazie:
+     * 1 kg
+     *
+     * Receptura:
+     * 500 g
+     *
+     * Zamieniamy opakowanie na:
+     * 1000 g
+     */
+    if (
+      productUnit === "kg" &&
+      recipeUnit === "g"
+    ) {
+      packageQuantity =
+        product.package_quantity * 1000;
+    }
+
+    /*
+     * Produkt w bazie:
+     * 1000 g
+     *
+     * Receptura:
+     * 0,5 kg
+     *
+     * Zamieniamy ilość receptury na:
+     * 500 g
+     */
+    else if (
+      productUnit === "g" &&
+      recipeUnit === "kg"
+    ) {
+      ingredientQuantity =
+        ingredient.quantity * 1000;
+    }
+
+    /*
+     * Produkt w bazie:
+     * g
+     *
+     * Receptura:
+     * mg
+     *
+     * 1 g = 1000 mg
+     */
+    else if (
+      productUnit === "g" &&
+      recipeUnit === "mg"
+    ) {
+      packageQuantity =
+        product.package_quantity * 1000;
+    }
+
+    /*
+     * Produkt w bazie:
+     * mg
+     *
+     * Receptura:
+     * g
+     *
+     * 1 g = 1000 mg
+     */
+    else if (
+      productUnit === "mg" &&
+      recipeUnit === "g"
+    ) {
+      ingredientQuantity =
+        ingredient.quantity * 1000;
+    }
+
     return (
-      (ingredient.quantity /
-        product.package_quantity) *
+      (ingredientQuantity /
+        packageQuantity) *
       product.package_price
     );
   }
