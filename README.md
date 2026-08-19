@@ -8,4 +8,4 @@ Aplikacja do kalkulowania kosztów tortów, receptur i zamówień.
 - TypeScript
 - Supabase
 - Vercel
-Vercel test 2
+TESSST
