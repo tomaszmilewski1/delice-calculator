@@ -132,7 +132,9 @@ export default function Recipes() {
 
     setRecipes((recipesResult.data ?? []) as Recipe[]);
     setProducts((productsResult.data ?? []) as Product[]);
-    setIngredients((ingredientsResult.data ?? []) as RecipeIngredient[]);
+    setIngredients(
+      (ingredientsResult.data ?? []) as RecipeIngredient[]
+    );
 
     setLoading(false);
   }
@@ -154,6 +156,18 @@ export default function Recipes() {
     setIngredientForm((current) => ({
       ...current,
       [field]: value,
+    }));
+  }
+
+  function handleProductChange(productId: string) {
+    const product = products.find(
+      (item) => item.id === productId
+    );
+
+    setIngredientForm((current) => ({
+      ...current,
+      productId,
+      unit: product?.unit ?? "",
     }));
   }
 
@@ -183,6 +197,7 @@ export default function Recipes() {
     setSelectedRecipeId(recipe.id);
 
     fillRecipeForm(recipe);
+
     setIngredientForm(emptyIngredientForm);
     setError("");
     setSuccess("");
@@ -238,7 +253,8 @@ export default function Recipes() {
 
     if (
       portionsValue !== null &&
-      (!Number.isFinite(portionsValue) || portionsValue <= 0)
+      (!Number.isFinite(portionsValue) ||
+        portionsValue <= 0)
     ) {
       setError("Liczba porcji musi być większa od 0.");
       return;
@@ -246,7 +262,8 @@ export default function Recipes() {
 
     if (
       diameterValue !== null &&
-      (!Number.isFinite(diameterValue) || diameterValue <= 0)
+      (!Number.isFinite(diameterValue) ||
+        diameterValue <= 0)
     ) {
       setError("Średnica musi być większa od 0.");
       return;
@@ -254,7 +271,8 @@ export default function Recipes() {
 
     if (
       heightValue !== null &&
-      (!Number.isFinite(heightValue) || heightValue <= 0)
+      (!Number.isFinite(heightValue) ||
+        heightValue <= 0)
     ) {
       setError("Wysokość musi być większa od 0.");
       return;
@@ -322,7 +340,9 @@ export default function Recipes() {
     event.preventDefault();
 
     if (!selectedRecipeId) {
-      setError("Najpierw wybierz lub zapisz recepturę.");
+      setError(
+        "Najpierw wybierz lub zapisz recepturę."
+      );
       return;
     }
 
@@ -352,8 +372,8 @@ export default function Recipes() {
       return;
     }
 
-    const unit =
-      ingredientForm.unit.trim() || product.unit;
+    // Jednostka zawsze pobierana bezpośrednio z produktu.
+    const unit = product.unit;
 
     setSavingIngredient(true);
 
@@ -376,7 +396,9 @@ export default function Recipes() {
 
     setIngredientForm(emptyIngredientForm);
 
-    setSuccess(`Dodano składnik: ${product.name}.`);
+    setSuccess(
+      `Dodano składnik: ${product.name}. Jednostka: ${unit}.`
+    );
 
     await loadData();
 
@@ -522,78 +544,55 @@ export default function Recipes() {
     );
   }
 
-  /*
-   * NORMALIZACJA JEDNOSTEK
+  /**
+   * Przelicza ilość składnika do jednostki produktu.
    *
-   * Wszystkie jednostki wagowe przeliczamy do gramów.
-   * Wszystkie jednostki objętościowe przeliczamy do mililitrów.
-   *
-   * kg -> g
-   * g  -> g
-   * l  -> ml
-   * ml -> ml
-   * szt -> szt
+   * Przykłady:
+   * 500 g mąki z opakowania 1 kg = 0,5 kg
+   * 0,5 kg mąki z opakowania 1 kg = 0,5 kg
+   * 20 g proszku z opakowania 40 g = 0,5 opakowania
+   * 3 szt jaj z opakowania 10 szt = 0,3 opakowania
    */
-  function normalizeUnit(
+  function normalizeQuantityToProductUnit(
     quantity: number,
-    unit: string
+    ingredientUnit: string,
+    productUnit: string
   ) {
-    const normalized = unit
+    const from = ingredientUnit
       .trim()
-      .toLowerCase()
-      .replace("gram", "g")
-      .replace("kilogram", "kg")
-      .replace("mililitr", "ml")
-      .replace("litr", "l");
+      .toLowerCase();
 
-    if (
-      normalized === "kg" ||
-      normalized === "kilogramy" ||
-      normalized === "kilogram"
-    ) {
-      return {
-        quantity: quantity * 1000,
-        unit: "g",
-      };
+    const to = productUnit
+      .trim()
+      .toLowerCase();
+
+    if (from === to) {
+      return quantity;
     }
 
-    if (
-      normalized === "g" ||
-      normalized === "gramy" ||
-      normalized === "gram"
-    ) {
-      return {
-        quantity,
-        unit: "g",
-      };
+    // g -> kg
+    if (from === "g" && to === "kg") {
+      return quantity / 1000;
     }
 
-    if (
-      normalized === "l" ||
-      normalized === "litry" ||
-      normalized === "litr"
-    ) {
-      return {
-        quantity: quantity * 1000,
-        unit: "ml",
-      };
+    // kg -> g
+    if (from === "kg" && to === "g") {
+      return quantity * 1000;
     }
 
-    if (
-      normalized === "ml" ||
-      normalized === "mililitry" ||
-      normalized === "mililitr"
-    ) {
-      return {
-        quantity,
-        unit: "ml",
-      };
+    // ml -> l
+    if (from === "ml" && to === "l") {
+      return quantity / 1000;
     }
 
-    return {
-      quantity,
-      unit: normalized,
-    };
+    // l -> ml
+    if (from === "l" && to === "ml") {
+      return quantity * 1000;
+    }
+
+    // Jeżeli jednostki są inne i nie mamy
+    // bezpiecznej konwersji, pozostawiamy ilość.
+    return quantity;
   }
 
   function calculateIngredientCost(
@@ -608,49 +607,25 @@ export default function Recipes() {
     }
 
     if (
-      !Number.isFinite(product.package_quantity) ||
+      !product.package_quantity ||
       product.package_quantity <= 0 ||
-      !Number.isFinite(product.package_price)
+      product.package_price === null ||
+      product.package_price === undefined
     ) {
       return 0;
     }
 
-    const recipeNormalized = normalizeUnit(
-      ingredient.quantity,
-      ingredient.unit
-    );
-
-    const packageNormalized = normalizeUnit(
-      product.package_quantity,
-      product.unit
-    );
-
-    /*
-     * Jednostki muszą być zgodne.
-     *
-     * Przykład:
-     *
-     * produkt:
-     * 1 kg = 1000 g
-     * 5 zł
-     *
-     * receptura:
-     * 500 g
-     *
-     * 500 / 1000 * 5 = 2,50 zł
-     */
-
-    if (
-      recipeNormalized.unit !==
-      packageNormalized.unit
-    ) {
-      return 0;
-    }
+    const normalizedQuantity =
+      normalizeQuantityToProductUnit(
+        ingredient.quantity,
+        ingredient.unit,
+        product.unit
+      );
 
     return (
-      (recipeNormalized.quantity /
-        packageNormalized.quantity) *
-      product.package_price
+      (normalizedQuantity /
+        product.package_quantity) *
+      Number(product.package_price)
     );
   }
 
@@ -722,7 +697,8 @@ export default function Recipes() {
     return `${formatNumber(portions)} ${
       portions === 1
         ? "porcja"
-        : portions >= 2 && portions <= 4
+        : portions >= 2 &&
+          portions <= 4
         ? "porcje"
         : "porcji"
     }`;
@@ -801,7 +777,7 @@ export default function Recipes() {
                       event.target.value
                     )
                   }
-                  placeholder="np. Biszkopt waniliowy"
+                  placeholder="np. Krem śmietankowy"
                   disabled={saving}
                   style={inputStyle}
                 />
@@ -821,7 +797,7 @@ export default function Recipes() {
                       event.target.value
                     )
                   }
-                  placeholder="np. Biszkopty"
+                  placeholder="np. Kremy"
                   disabled={saving}
                   style={inputStyle}
                 />
@@ -967,7 +943,7 @@ export default function Recipes() {
               <div style={cardHeaderStyle}>
                 <div>
                   <h3 style={cardTitleStyle}>
-                    SKŁADNIKI RECEPTURY
+                    Składniki receptury
                   </h3>
 
                   <p style={cardSubtitleStyle}>
@@ -976,7 +952,7 @@ export default function Recipes() {
                 </div>
 
                 <div style={costBadgeStyle}>
-                  KOSZT RECEPTURY{" "}
+                  Koszt:{" "}
                   <strong>
                     {formatMoney(
                       selectedRecipeCost
@@ -1000,8 +976,7 @@ export default function Recipes() {
                         ingredientForm.productId
                       }
                       onChange={(event) =>
-                        updateIngredientForm(
-                          "productId",
+                        handleProductChange(
                           event.target.value
                         )
                       }
@@ -1012,7 +987,7 @@ export default function Recipes() {
                       style={inputStyle}
                     >
                       <option value="">
-                        Wybierz produkt z bazy
+                        Wybierz produkt z bazy...
                       </option>
 
                       {products
@@ -1059,7 +1034,7 @@ export default function Recipes() {
                           event.target.value
                         )
                       }
-                      placeholder="np. 500"
+                      placeholder="np. 0,5"
                       disabled={savingIngredient}
                       style={inputStyle}
                     />
@@ -1075,15 +1050,24 @@ export default function Recipes() {
                     <input
                       type="text"
                       value={ingredientForm.unit}
-                      onChange={(event) =>
-                        updateIngredientForm(
-                          "unit",
-                          event.target.value
-                        )
+                      readOnly
+                      placeholder="Automatycznie"
+                      disabled={
+                        savingIngredient ||
+                        !ingredientForm.productId
                       }
-                      placeholder="np. g"
-                      disabled={savingIngredient}
-                      style={inputStyle}
+                      style={{
+                        ...inputStyle,
+                        background:
+                          ingredientForm.productId
+                            ? "#f7f3ef"
+                            : "#ffffff",
+                        color:
+                          ingredientForm.productId
+                            ? "#514b46"
+                            : "#9a928b",
+                        cursor: "default",
+                      }}
                     />
                   </label>
                 </div>
@@ -1143,7 +1127,7 @@ export default function Recipes() {
                               }
                             >
                               {product?.name
-                                ?.charAt(0)
+                                .charAt(0)
                                 .toUpperCase() ??
                                 "P"}
                             </div>
@@ -1176,21 +1160,11 @@ export default function Recipes() {
                               ingredientRightStyle
                             }
                           >
-                            <div>
-                              <span
-                                style={
-                                  ingredientPriceLabelStyle
-                                }
-                              >
-                                Koszt składnika
-                              </span>
-
-                              <strong>
-                                {formatMoney(
-                                  ingredientCost
-                                )}
-                              </strong>
-                            </div>
+                            <strong>
+                              {formatMoney(
+                                ingredientCost
+                              )}
+                            </strong>
 
                             <button
                               type="button"
@@ -1215,17 +1189,23 @@ export default function Recipes() {
 
               <div style={totalCostStyle}>
                 <div>
-                  <span style={totalLabelStyle}>
-                    Łączny koszt składników
+                  <span
+                    style={totalLabelStyle}
+                  >
+                    Łączny koszt receptury
                   </span>
 
-                  <span style={totalHintStyle}>
-                    Koszt automatycznie przeliczany
-                    według jednostki produktu.
+                  <span
+                    style={totalHintStyle}
+                  >
+                    Na podstawie cen produktów
+                    zapisanych w bazie.
                   </span>
                 </div>
 
-                <strong style={totalValueStyle}>
+                <strong
+                  style={totalValueStyle}
+                >
                   {formatMoney(
                     selectedRecipeCost
                   )}
@@ -1281,7 +1261,9 @@ export default function Recipes() {
             <div style={recipesListStyle}>
               {recipes.map((recipe) => {
                 const recipeCost =
-                  calculateRecipeCost(recipe.id);
+                  calculateRecipeCost(
+                    recipe.id
+                  );
 
                 const recipeIngredients =
                   ingredients.filter(
@@ -1313,9 +1295,15 @@ export default function Recipes() {
                         recipeSelectButtonStyle
                       }
                     >
-                      <div style={recipeMainStyle}>
+                      <div
+                        style={
+                          recipeMainStyle
+                        }
+                      >
                         <div
-                          style={recipeIconStyle}
+                          style={
+                            recipeIconStyle
+                          }
                         >
                           {recipe.name
                             .charAt(0)
@@ -1358,7 +1346,9 @@ export default function Recipes() {
                       </div>
 
                       <div
-                        style={recipeInfoStyle}
+                        style={
+                          recipeInfoStyle
+                        }
                       >
                         <div>
                           <span
@@ -1606,7 +1596,8 @@ const textareaStyle = {
 
 const threeColumnStyle = {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr 1fr",
+  gridTemplateColumns:
+    "1fr 1fr 1fr",
   gap: "10px",
 };
 
@@ -1800,13 +1791,6 @@ const ingredientRightStyle = {
   alignItems: "center",
   gap: "12px",
   flexShrink: 0,
-};
-
-const ingredientPriceLabelStyle = {
-  display: "block",
-  color: "#9a928b",
-  fontSize: "10px",
-  marginBottom: "2px",
 };
 
 const smallDeleteButtonStyle = {
