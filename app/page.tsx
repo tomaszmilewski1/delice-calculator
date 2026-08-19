@@ -1,6 +1,5 @@
 "use client";
 
-import Recipes from "../components/Recipes";
 import { useState } from "react";
 import Products from "../components/Products";
 import Recipes from "../components/Recipes";
