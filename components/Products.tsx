@@ -1,1205 +1,789 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 type Product = {
   id: string;
   name: string;
   category: string | null;
-  unit: string;
+  unit: string | null;
   package_quantity: number | null;
   package_price: number | null;
   notes: string | null;
   active: boolean;
-  created_at?: string;
-  updated_at?: string;
-};
-
-type ProductForm = {
-  name: string;
-  category: string;
-  unit: string;
-  packageQuantity: string;
-  packagePrice: string;
-  notes: string;
-  active: boolean;
-};
-
-const emptyForm: ProductForm = {
-  name: "",
-  category: "",
-  unit: "g",
-  packageQuantity: "",
-  packagePrice: "",
-  notes: "",
-  active: true,
+  created_at: string;
+  updated_at: string;
 };
 
 export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("");
+  const [unit, setUnit] = useState("");
+  const [packageQuantity, setPackageQuantity] = useState("");
+  const [packagePrice, setPackagePrice] = useState("");
+  const [notes, setNotes] = useState("");
+  const [active, setActive] = useState(true);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  const [form, setForm] =
-    useState<ProductForm>(emptyForm);
-
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
-
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] =
-    useState<"all" | "active" | "inactive">("all");
-
-  async function loadProducts() {
-    setLoading(true);
-    setError("");
-
-    const { data, error: loadError } =
-      await supabase
-        .from("products")
-        .select("*")
-        .order("name", { ascending: true });
-
-    if (loadError) {
-      setError(
-        `Nie udało się pobrać produktów: ${loadError.message}`
-      );
-      setProducts([]);
-      setLoading(false);
-      return;
-    }
-
-    setProducts((data || []) as Product[]);
-    setLoading(false);
-  }
 
   useEffect(() => {
     loadProducts();
   }, []);
 
-  function updateForm(
-    field: keyof ProductForm,
-    value: string | boolean
-  ) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
+  async function loadProducts() {
+    setLoading(true);
+    setError("");
+
+    const { data, error: productsError } = await supabase
+      .from("products")
+      .select("*")
+      .order("name", { ascending: true });
+
+    if (productsError) {
+      setError(
+        `Nie udało się pobrać produktów: ${productsError.message}`
+      );
+      setLoading(false);
+      return;
+    }
+
+    setProducts((data ?? []) as Product[]);
+    setLoading(false);
   }
 
-  function startEdit(product: Product) {
-    setEditingId(product.id);
-
-    setForm({
-      name: product.name || "",
-      category: product.category || "",
-      unit: product.unit || "g",
-      packageQuantity:
-        product.package_quantity !== null &&
-        product.package_quantity !== undefined
-          ? String(product.package_quantity)
-          : "",
-      packagePrice:
-        product.package_price !== null &&
-        product.package_price !== undefined
-          ? String(product.package_price)
-          : "",
-      notes: product.notes || "",
-      active: product.active,
-    });
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
     setError("");
     setSuccess("");
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  }
+    const cleanName = name.trim();
 
-  function cancelEdit() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setError("");
-    setSuccess("");
-  }
-
-  async function saveProduct() {
-    setError("");
-    setSuccess("");
-
-    const name = form.name.trim();
-
-    if (!name) {
+    if (!cleanName) {
       setError("Podaj nazwę produktu.");
       return;
     }
 
-    const packageQuantity =
-      form.packageQuantity.trim() === ""
+    const quantityValue =
+      packageQuantity.trim() === ""
         ? null
-        : Number(
-            form.packageQuantity.replace(",", ".")
-          );
+        : Number(packageQuantity.replace(",", "."));
 
-    const packagePrice =
-      form.packagePrice.trim() === ""
+    const priceValue =
+      packagePrice.trim() === ""
         ? null
-        : Number(
-            form.packagePrice.replace(",", ".")
-          );
+        : Number(packagePrice.replace(",", "."));
 
     if (
-      packageQuantity !== null &&
-      (!Number.isFinite(packageQuantity) ||
-        packageQuantity < 0)
+      quantityValue !== null &&
+      (!Number.isFinite(quantityValue) || quantityValue < 0)
     ) {
-      setError(
-        "Ilość w opakowaniu musi być poprawną liczbą."
-      );
+      setError("Ilość w opakowaniu musi być prawidłową liczbą.");
       return;
     }
 
     if (
-      packagePrice !== null &&
-      (!Number.isFinite(packagePrice) ||
-        packagePrice < 0)
+      priceValue !== null &&
+      (!Number.isFinite(priceValue) || priceValue < 0)
     ) {
-      setError(
-        "Cena zakupu musi być poprawną liczbą."
-      );
+      setError("Cena opakowania musi być prawidłową liczbą.");
       return;
     }
 
     setSaving(true);
 
-    const productData = {
-      name,
-      category:
-        form.category.trim() || null,
-      unit: form.unit,
-      package_quantity: packageQuantity,
-      package_price: packagePrice,
-      notes: form.notes.trim() || null,
-      active: form.active,
-    };
+    const { error: insertError } = await supabase
+      .from("products")
+      .insert({
+        name: cleanName,
+        category: category.trim() || null,
+        unit: unit.trim() || null,
+        package_quantity: quantityValue,
+        package_price: priceValue,
+        notes: notes.trim() || null,
+        active,
+      });
 
-    if (editingId) {
-      const { error: updateError } =
-        await supabase
-          .from("products")
-          .update(productData)
-          .eq("id", editingId);
-
-      if (updateError) {
-        setError(
-          `Nie udało się zapisać zmian: ${updateError.message}`
-        );
-        setSaving(false);
-        return;
-      }
-
-      setSuccess("Produkt został zaktualizowany.");
-    } else {
-      const { error: insertError } =
-        await supabase
-          .from("products")
-          .insert(productData);
-
-      if (insertError) {
-        setError(
-          `Nie udało się dodać produktu: ${insertError.message}`
-        );
-        setSaving(false);
-        return;
-      }
-
-      setSuccess("Produkt został dodany.");
+    if (insertError) {
+      setError(
+        `Nie udało się zapisać produktu: ${insertError.message}`
+      );
+      setSaving(false);
+      return;
     }
 
-    setForm(emptyForm);
-    setEditingId(null);
+    setName("");
+    setCategory("");
+    setUnit("");
+    setPackageQuantity("");
+    setPackagePrice("");
+    setNotes("");
+    setActive(true);
+
+    setSuccess("Produkt został dodany.");
 
     await loadProducts();
 
     setSaving(false);
   }
 
-  async function toggleActive(product: Product) {
-    setError("");
-    setSuccess("");
-
-    const { error: updateError } =
-      await supabase
-        .from("products")
-        .update({
-          active: !product.active,
-        })
-        .eq("id", product.id);
-
-    if (updateError) {
-      setError(
-        `Nie udało się zmienić statusu produktu: ${updateError.message}`
-      );
-      return;
-    }
-
-    setProducts((current) =>
-      current.map((item) =>
-        item.id === product.id
-          ? {
-              ...item,
-              active: !item.active,
-            }
-          : item
-      )
-    );
-
-    setSuccess(
-      product.active
-        ? "Produkt został dezaktywowany."
-        : "Produkt został aktywowany."
-    );
-  }
-
-  async function deleteProduct(product: Product) {
-    const confirmed = window.confirm(
-      `Czy na pewno chcesz usunąć produkt „${product.name}”?`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setError("");
-    setSuccess("");
-    setDeletingId(product.id);
-
-    const { error: deleteError } =
-      await supabase
-        .from("products")
-        .delete()
-        .eq("id", product.id);
-
-    if (deleteError) {
-      setError(
-        `Nie udało się usunąć produktu: ${deleteError.message}`
-      );
-      setDeletingId(null);
-      return;
-    }
-
-    setProducts((current) =>
-      current.filter(
-        (item) => item.id !== product.id
-      )
-    );
-
-    if (editingId === product.id) {
-      cancelEdit();
-    }
-
-    setSuccess("Produkt został usunięty.");
-    setDeletingId(null);
-  }
-
-  const filteredProducts = useMemo(() => {
-    const normalizedSearch =
-      search.trim().toLowerCase();
-
-    return products.filter((product) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        product.name
-          .toLowerCase()
-          .includes(normalizedSearch) ||
-        (product.category || "")
-          .toLowerCase()
-          .includes(normalizedSearch);
-
-      const matchesFilter =
-        filter === "all" ||
-        (filter === "active" && product.active) ||
-        (filter === "inactive" && !product.active);
-
-      return matchesSearch && matchesFilter;
-    });
-  }, [products, search, filter]);
-
-  const activeCount = products.filter(
-    (product) => product.active
-  ).length;
-
-  const inactiveCount =
-    products.length - activeCount;
-
-  function calculateUnitPrice(product: Product) {
-    const quantity = Number(
-      product.package_quantity
-    );
-
-    const price = Number(product.package_price);
-
-    if (
-      !Number.isFinite(quantity) ||
-      quantity <= 0 ||
-      !Number.isFinite(price)
-    ) {
-      return null;
-    }
-
-    let normalizedQuantity = quantity;
-
-    if (product.unit === "kg") {
-      normalizedQuantity = quantity * 1000;
-    }
-
-    if (product.unit === "l") {
-      normalizedQuantity = quantity * 1000;
-    }
-
-    if (
-      product.unit === "g" ||
-      product.unit === "ml"
-    ) {
-      normalizedQuantity = quantity;
-    }
-
-    if (product.unit === "szt.") {
-      return price / quantity;
-    }
-
-    return price / normalizedQuantity;
-  }
-
-  function formatMoney(value: number | null) {
-    if (
-      value === null ||
-      !Number.isFinite(value)
-    ) {
+  function formatPrice(value: number | null) {
+    if (value === null || value === undefined) {
       return "—";
     }
 
-    return (
-      value.toFixed(2).replace(".", ",") +
-      " zł"
-    );
+    return `${Number(value).toFixed(2).replace(".", ",")} zł`;
+  }
+
+  function formatQuantity(value: number | null) {
+    if (value === null || value === undefined) {
+      return "—";
+    }
+
+    return Number(value)
+      .toString()
+      .replace(".", ",");
   }
 
   return (
     <section style={pageStyle}>
       <div style={headerStyle}>
         <div>
-          <div style={eyebrowStyle}>
-            BAZA PRODUKTÓW
-          </div>
+          <div style={eyebrowStyle}>BAZA PRODUKTÓW</div>
 
           <h2 style={titleStyle}>
             Produkty
           </h2>
 
-          <p style={descriptionStyle}>
-            Zarządzaj produktami, cenami zakupu,
-            opakowaniami i jednostkami.
+          <p style={subtitleStyle}>
+            Zarządzaj produktami, cenami i jednostkami
+            wykorzystywanymi przy wyliczaniu kosztów tortów.
           </p>
         </div>
 
-        <div style={summaryGridStyle}>
-          <SummaryBox
-            label="Wszystkie"
-            value={products.length}
-          />
-
-          <SummaryBox
-            label="Aktywne"
-            value={activeCount}
-          />
-
-          <SummaryBox
-            label="Nieaktywne"
-            value={inactiveCount}
-          />
+        <div style={countBadgeStyle}>
+          {products.length}{" "}
+          {products.length === 1
+            ? "produkt"
+            : products.length >= 2 &&
+              products.length <= 4
+            ? "produkty"
+            : "produktów"}
         </div>
       </div>
 
-      {error && (
-        <div style={errorStyle}>
-          <strong>Błąd</strong>
-          <div>{error}</div>
-        </div>
-      )}
+      <div style={contentGridStyle}>
+        <div style={formCardStyle}>
+          <div style={cardHeaderStyle}>
+            <div>
+              <h3 style={cardTitleStyle}>
+                Dodaj produkt
+              </h3>
 
-      {success && (
-        <div style={successStyle}>
-          {success}
-        </div>
-      )}
-
-      <div style={formCardStyle}>
-        <div style={formHeaderStyle}>
-          <div>
-            <h3 style={formTitleStyle}>
-              {editingId
-                ? "Edytuj produkt"
-                : "Dodaj produkt"}
-            </h3>
-
-            <p style={formDescriptionStyle}>
-              {editingId
-                ? "Zmień dane produktu i zapisz zmiany."
-                : "Dodaj produkt, który będzie później wykorzystywany w recepturach i kalkulacji kosztów."}
-            </p>
+              <p style={cardSubtitleStyle}>
+                Produkt zostanie zapisany bezpośrednio
+                w Supabase.
+              </p>
+            </div>
           </div>
 
-          {editingId && (
+          <form onSubmit={handleSubmit}>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Nazwa produktu *
+              </span>
+
+              <input
+                type="text"
+                value={name}
+                onChange={(event) =>
+                  setName(event.target.value)
+                }
+                placeholder="np. Mąka pszenna"
+                disabled={saving}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Kategoria
+              </span>
+
+              <input
+                type="text"
+                value={category}
+                onChange={(event) =>
+                  setCategory(event.target.value)
+                }
+                placeholder="np. Produkty sypkie"
+                disabled={saving}
+                style={inputStyle}
+              />
+            </label>
+
+            <div style={twoColumnStyle}>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
+                  Jednostka
+                </span>
+
+                <input
+                  type="text"
+                  value={unit}
+                  onChange={(event) =>
+                    setUnit(event.target.value)
+                  }
+                  placeholder="kg, g, szt."
+                  disabled={saving}
+                  style={inputStyle}
+                />
+              </label>
+
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
+                  Ilość w opakowaniu
+                </span>
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={packageQuantity}
+                  onChange={(event) =>
+                    setPackageQuantity(
+                      event.target.value
+                    )
+                  }
+                  placeholder="np. 1"
+                  disabled={saving}
+                  style={inputStyle}
+                />
+              </label>
+            </div>
+
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Cena opakowania
+              </span>
+
+              <div style={priceInputWrapperStyle}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={packagePrice}
+                  onChange={(event) =>
+                    setPackagePrice(
+                      event.target.value
+                    )
+                  }
+                  placeholder="np. 8,99"
+                  disabled={saving}
+                  style={priceInputStyle}
+                />
+
+                <span style={currencyStyle}>
+                  zł
+                </span>
+              </div>
+            </label>
+
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Uwagi
+              </span>
+
+              <textarea
+                value={notes}
+                onChange={(event) =>
+                  setNotes(event.target.value)
+                }
+                placeholder="Opcjonalne informacje"
+                disabled={saving}
+                rows={3}
+                style={textareaStyle}
+              />
+            </label>
+
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={(event) =>
+                  setActive(event.target.checked)
+                }
+                disabled={saving}
+              />
+
+              <span>
+                Produkt aktywny
+              </span>
+            </label>
+
+            {error && (
+              <div style={errorStyle}>
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div style={successStyle}>
+                {success}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={saving}
+              style={{
+                ...buttonStyle,
+                opacity: saving ? 0.7 : 1,
+                cursor: saving
+                  ? "not-allowed"
+                  : "pointer",
+              }}
+            >
+              {saving
+                ? "Zapisywanie..."
+                : "+ Dodaj produkt"}
+            </button>
+          </form>
+        </div>
+
+        <div style={listCardStyle}>
+          <div style={cardHeaderStyle}>
+            <div>
+              <h3 style={cardTitleStyle}>
+                Lista produktów
+              </h3>
+
+              <p style={cardSubtitleStyle}>
+                Produkty zapisane w bazie Supabase.
+              </p>
+            </div>
+
             <button
               type="button"
-              onClick={cancelEdit}
-              style={secondaryButtonStyle}
+              onClick={loadProducts}
+              disabled={loading}
+              style={refreshButtonStyle}
             >
-              Anuluj edycję
+              Odśwież
             </button>
+          </div>
+
+          {loading ? (
+            <div style={emptyStyle}>
+              Ładowanie produktów...
+            </div>
+          ) : products.length === 0 ? (
+            <div style={emptyStyle}>
+              <div style={emptyIconStyle}>
+                P
+              </div>
+
+              <strong>
+                Brak produktów
+              </strong>
+
+              <p style={emptyTextStyle}>
+                Dodaj pierwszy produkt za pomocą
+                formularza.
+              </p>
+            </div>
+          ) : (
+            <div style={productsListStyle}>
+              {products.map((product) => (
+                <div
+                  key={product.id}
+                  style={productRowStyle}
+                >
+                  <div style={productMainStyle}>
+                    <div style={productIconStyle}>
+                      {product.name
+                        .charAt(0)
+                        .toUpperCase()}
+                    </div>
+
+                    <div>
+                      <div style={productNameStyle}>
+                        {product.name}
+                      </div>
+
+                      <div style={productMetaStyle}>
+                        {product.category ||
+                          "Bez kategorii"}
+
+                        {product.unit
+                          ? ` • ${product.unit}`
+                          : ""}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={productDetailsStyle}>
+                    <div>
+                      <span style={detailLabelStyle}>
+                        Opakowanie
+                      </span>
+
+                      <strong>
+                        {formatQuantity(
+                          product.package_quantity
+                        )}{" "}
+                        {product.unit || ""}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span style={detailLabelStyle}>
+                        Cena
+                      </span>
+
+                      <strong>
+                        {formatPrice(
+                          product.package_price
+                        )}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span style={detailLabelStyle}>
+                        Status
+                      </span>
+
+                      <span
+                        style={{
+                          ...statusStyle,
+                          ...(product.active
+                            ? activeStatusStyle
+                            : inactiveStatusStyle),
+                        }}
+                      >
+                        {product.active
+                          ? "Aktywny"
+                          : "Nieaktywny"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
-
-        <div style={formGridStyle}>
-          <Field
-            label="Nazwa produktu"
-            value={form.name}
-            onChange={(value) =>
-              updateForm("name", value)
-            }
-            placeholder="np. Mąka tortowa"
-          />
-
-          <Field
-            label="Kategoria"
-            value={form.category}
-            onChange={(value) =>
-              updateForm("category", value)
-            }
-            placeholder="np. Mąki"
-          />
-
-          <label>
-            <div style={labelStyle}>
-              Jednostka
-            </div>
-
-            <select
-              value={form.unit}
-              onChange={(event) =>
-                updateForm(
-                  "unit",
-                  event.target.value
-                )
-              }
-              style={inputStyle}
-            >
-              <option value="g">g</option>
-              <option value="kg">kg</option>
-              <option value="ml">ml</option>
-              <option value="l">l</option>
-              <option value="szt.">
-                szt.
-              </option>
-            </select>
-          </label>
-
-          <Field
-            label="Ilość w opakowaniu"
-            value={form.packageQuantity}
-            onChange={(value) =>
-              updateForm(
-                "packageQuantity",
-                value
-              )
-            }
-            placeholder="np. 1000"
-            type="number"
-          />
-
-          <Field
-            label="Cena opakowania"
-            value={form.packagePrice}
-            onChange={(value) =>
-              updateForm(
-                "packagePrice",
-                value
-              )
-            }
-            placeholder="np. 4,99"
-            type="number"
-            step="0.01"
-          />
-
-          <Field
-            label="Uwagi"
-            value={form.notes}
-            onChange={(value) =>
-              updateForm("notes", value)
-            }
-            placeholder="Opcjonalnie"
-          />
-        </div>
-
-        <label style={activeFieldStyle}>
-          <input
-            type="checkbox"
-            checked={form.active}
-            onChange={(event) =>
-              updateForm(
-                "active",
-                event.target.checked
-              )
-            }
-          />
-
-          <span>
-            Produkt aktywny
-          </span>
-        </label>
-
-        <button
-          type="button"
-          onClick={saveProduct}
-          disabled={saving}
-          style={{
-            ...primaryButtonStyle,
-            opacity: saving ? 0.65 : 1,
-            cursor: saving
-              ? "not-allowed"
-              : "pointer",
-          }}
-        >
-          {saving
-            ? "Zapisywanie..."
-            : editingId
-              ? "Zapisz zmiany"
-              : "+ Dodaj produkt"}
-        </button>
-      </div>
-
-      <div style={listCardStyle}>
-        <div style={listHeaderStyle}>
-          <div>
-            <h3 style={listTitleStyle}>
-              Lista produktów
-            </h3>
-
-            <p style={listDescriptionStyle}>
-              Produkty zapisane bezpośrednio
-              w bazie Supabase.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={loadProducts}
-            style={secondaryButtonStyle}
-            disabled={loading}
-          >
-            {loading
-              ? "Odświeżanie..."
-              : "↻ Odśwież"}
-          </button>
-        </div>
-
-        <div style={filtersStyle}>
-          <input
-            value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
-            placeholder="Szukaj produktu lub kategorii..."
-            style={searchInputStyle}
-          />
-
-          <select
-            value={filter}
-            onChange={(event) =>
-              setFilter(
-                event.target.value as
-                  | "all"
-                  | "active"
-                  | "inactive"
-              )
-            }
-            style={filterSelectStyle}
-          >
-            <option value="all">
-              Wszystkie produkty
-            </option>
-
-            <option value="active">
-              Tylko aktywne
-            </option>
-
-            <option value="inactive">
-              Tylko nieaktywne
-            </option>
-          </select>
-        </div>
-
-        {loading ? (
-          <div style={emptyStyle}>
-            Ładowanie produktów...
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div style={emptyStyle}>
-            <div style={emptyIconStyle}>
-              P
-            </div>
-
-            <strong>
-              {products.length === 0
-                ? "Nie ma jeszcze produktów"
-                : "Brak wyników"}
-            </strong>
-
-            <p style={{ marginBottom: 0 }}>
-              {products.length === 0
-                ? "Dodaj pierwszy produkt za pomocą formularza powyżej."
-                : "Zmień wyszukiwanie lub filtr."}
-            </p>
-          </div>
-        ) : (
-          <div style={tableWrapperStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>
-                    Produkt
-                  </th>
-
-                  <th style={thStyle}>
-                    Kategoria
-                  </th>
-
-                  <th style={thStyle}>
-                    Opakowanie
-                  </th>
-
-                  <th style={thStyle}>
-                    Cena
-                  </th>
-
-                  <th style={thStyle}>
-                    Cena jednostkowa
-                  </th>
-
-                  <th style={thStyle}>
-                    Status
-                  </th>
-
-                  <th style={thStyle}>
-                    Akcje
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {filteredProducts.map(
-                  (product) => {
-                    const unitPrice =
-                      calculateUnitPrice(
-                        product
-                      );
-
-                    return (
-                      <tr key={product.id}>
-                        <td style={tdStyle}>
-                          <strong>
-                            {product.name}
-                          </strong>
-
-                          {product.notes && (
-                            <div
-                              style={
-                                noteStyle
-                              }
-                            >
-                              {product.notes}
-                            </div>
-                          )}
-                        </td>
-
-                        <td style={tdStyle}>
-                          {product.category ||
-                            "—"}
-                        </td>
-
-                        <td style={tdStyle}>
-                          {product.package_quantity ??
-                            "—"}{" "}
-                          {product.unit}
-                        </td>
-
-                        <td style={tdStyle}>
-                          {formatMoney(
-                            product.package_price
-                          )}
-                        </td>
-
-                        <td style={tdStyle}>
-                          {unitPrice === null
-                            ? "—"
-                            : formatMoney(
-                                unitPrice
-                              )}
-                        </td>
-
-                        <td style={tdStyle}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              toggleActive(
-                                product
-                              )
-                            }
-                            style={{
-                              ...statusButtonStyle,
-                              background:
-                                product.active
-                                  ? "#eef7ef"
-                                  : "#f3f0ee",
-                              color:
-                                product.active
-                                  ? "#397348"
-                                  : "#766f69",
-                            }}
-                          >
-                            {product.active
-                              ? "Aktywny"
-                              : "Nieaktywny"}
-                          </button>
-                        </td>
-
-                        <td style={tdStyle}>
-                          <div
-                            style={
-                              actionsStyle
-                            }
-                          >
-                            <button
-                              type="button"
-                              onClick={() =>
-                                startEdit(
-                                  product
-                                )
-                              }
-                              style={
-                                editButtonStyle
-                              }
-                            >
-                              Edytuj
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                deleteProduct(
-                                  product
-                                )
-                              }
-                              disabled={
-                                deletingId ===
-                                product.id
-                              }
-                              style={{
-                                ...deleteButtonStyle,
-                                opacity:
-                                  deletingId ===
-                                  product.id
-                                    ? 0.5
-                                    : 1,
-                              }}
-                            >
-                              {deletingId ===
-                              product.id
-                                ? "Usuwanie..."
-                                : "Usuń"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </section>
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  step,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  type?: string;
-  step?: string;
-}) {
-  return (
-    <label>
-      <div style={labelStyle}>
-        {label}
-      </div>
-
-      <input
-        type={type}
-        step={step}
-        value={value}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
-        placeholder={placeholder}
-        style={inputStyle}
-      />
-    </label>
-  );
-}
-
-function SummaryBox({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  return (
-    <div style={summaryBoxStyle}>
-      <div style={summaryLabelStyle}>
-        {label}
-      </div>
-
-      <strong style={summaryValueStyle}>
-        {value}
-      </strong>
-    </div>
-  );
-}
-
 const pageStyle = {
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "18px",
-  padding: "28px",
-  boxSizing: "border-box" as const,
+  width: "100%",
 };
 
 const headerStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  gap: "25px",
-  marginBottom: "28px",
-  flexWrap: "wrap" as const,
+  gap: "20px",
+  marginBottom: "24px",
 };
 
 const eyebrowStyle = {
   color: "#8a6d4b",
   fontSize: "11px",
-  letterSpacing: "2px",
   fontWeight: 700,
+  letterSpacing: "2px",
   marginBottom: "7px",
 };
 
 const titleStyle = {
   margin: 0,
-  fontSize: "32px",
+  fontSize: "30px",
   color: "#292522",
 };
 
-const descriptionStyle = {
+const subtitleStyle = {
   margin: "8px 0 0",
   color: "#716b65",
-  lineHeight: 1.6,
-};
-
-const summaryGridStyle = {
-  display: "flex",
-  gap: "10px",
-  flexWrap: "wrap" as const,
-};
-
-const summaryBoxStyle = {
-  minWidth: "90px",
-  background: "#faf8f5",
-  border: "1px solid #eee7e0",
-  borderRadius: "12px",
-  padding: "12px 15px",
-  textAlign: "center" as const,
-};
-
-const summaryLabelStyle = {
-  fontSize: "11px",
-  color: "#716b65",
-  marginBottom: "5px",
-};
-
-const summaryValueStyle = {
-  fontSize: "22px",
-  color: "#8a6d4b",
-};
-
-const errorStyle = {
-  background: "#fff1ef",
-  border: "1px solid #e7b8b1",
-  color: "#9b4d43",
-  padding: "13px 15px",
-  borderRadius: "10px",
-  marginBottom: "18px",
   lineHeight: 1.5,
 };
 
-const successStyle = {
-  background: "#eef7ef",
-  border: "1px solid #c8dfca",
-  color: "#397348",
-  padding: "13px 15px",
-  borderRadius: "10px",
-  marginBottom: "18px",
+const countBadgeStyle = {
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  borderRadius: "20px",
+  padding: "9px 14px",
+  fontSize: "13px",
+  fontWeight: 600,
+  whiteSpace: "nowrap" as const,
+};
+
+const contentGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(300px, 380px) minmax(0, 1fr)",
+  gap: "20px",
+  alignItems: "start",
 };
 
 const formCardStyle = {
-  background: "#faf8f5",
-  border: "1px solid #eee7e0",
-  borderRadius: "16px",
-  padding: "22px",
-  marginBottom: "22px",
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "18px",
+  padding: "24px",
+  boxSizing: "border-box" as const,
 };
 
-const formHeaderStyle = {
+const listCardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "18px",
+  padding: "24px",
+  boxSizing: "border-box" as const,
+  minWidth: 0,
+};
+
+const cardHeaderStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: "15px",
-  marginBottom: "20px",
-  flexWrap: "wrap" as const,
+  marginBottom: "22px",
 };
 
-const formTitleStyle = {
+const cardTitleStyle = {
   margin: 0,
-  fontSize: "21px",
+  fontSize: "20px",
+  color: "#292522",
 };
 
-const formDescriptionStyle = {
-  color: "#716b65",
+const cardSubtitleStyle = {
   margin: "6px 0 0",
-  fontSize: "14px",
+  color: "#8a837d",
+  fontSize: "13px",
   lineHeight: 1.5,
 };
 
-const formGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(190px, 1fr))",
-  gap: "16px",
-  marginBottom: "17px",
+const labelStyle = {
+  display: "block",
+  marginBottom: "16px",
 };
 
-const labelStyle = {
-  fontSize: "13px",
-  color: "#716b65",
+const labelTextStyle = {
+  display: "block",
   marginBottom: "7px",
+  color: "#514b46",
+  fontSize: "13px",
+  fontWeight: 600,
 };
 
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box" as const,
-  padding: "12px",
   border: "1px solid #ddd3c9",
   borderRadius: "9px",
+  padding: "11px 12px",
   background: "#ffffff",
   color: "#292522",
   fontSize: "14px",
+  outline: "none",
 };
 
-const activeFieldStyle = {
+const twoColumnStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "12px",
+};
+
+const priceInputWrapperStyle = {
+  position: "relative" as const,
+};
+
+const priceInputStyle = {
+  ...inputStyle,
+  paddingRight: "35px",
+};
+
+const currencyStyle = {
+  position: "absolute" as const,
+  right: "12px",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "#8a837d",
+  fontSize: "13px",
+};
+
+const textareaStyle = {
+  ...inputStyle,
+  resize: "vertical" as const,
+  minHeight: "80px",
+  fontFamily: "inherit",
+};
+
+const checkboxLabelStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "8px",
-  color: "#514b46",
+  gap: "9px",
   fontSize: "14px",
+  color: "#514b46",
   marginBottom: "18px",
 };
 
-const primaryButtonStyle = {
+const buttonStyle = {
+  width: "100%",
   border: "none",
   borderRadius: "10px",
-  padding: "12px 20px",
+  padding: "12px 15px",
   background: "#8a6d4b",
   color: "#ffffff",
   fontSize: "14px",
   fontWeight: 600,
 };
 
-const secondaryButtonStyle = {
+const refreshButtonStyle = {
   border: "1px solid #ddd3c9",
-  borderRadius: "9px",
-  padding: "10px 15px",
   background: "#ffffff",
-  color: "#665b52",
-  fontSize: "13px",
+  color: "#8a6d4b",
+  borderRadius: "9px",
+  padding: "8px 12px",
   cursor: "pointer",
+  fontSize: "12px",
 };
 
-const listCardStyle = {
-  border: "1px solid #e9e2da",
-  borderRadius: "16px",
-  overflow: "hidden",
-};
-
-const listHeaderStyle = {
-  padding: "22px",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "15px",
-  flexWrap: "wrap" as const,
-};
-
-const listTitleStyle = {
-  margin: 0,
-  fontSize: "22px",
-};
-
-const listDescriptionStyle = {
-  color: "#716b65",
-  margin: "6px 0 0",
-  fontSize: "14px",
-};
-
-const filtersStyle = {
-  display: "flex",
-  gap: "10px",
-  padding: "0 22px 20px",
-  flexWrap: "wrap" as const,
-};
-
-const searchInputStyle = {
-  flex: "1 1 300px",
-  minWidth: "220px",
-  boxSizing: "border-box" as const,
-  padding: "11px 13px",
-  border: "1px solid #ddd3c9",
+const errorStyle = {
+  background: "#fff1f0",
+  border: "1px solid #e7b8b3",
+  color: "#9b4d43",
   borderRadius: "9px",
-  fontSize: "14px",
+  padding: "11px",
+  marginBottom: "14px",
+  fontSize: "13px",
+  lineHeight: 1.5,
 };
 
-const filterSelectStyle = {
-  padding: "11px 13px",
-  border: "1px solid #ddd3c9",
+const successStyle = {
+  background: "#f0f8f2",
+  border: "1px solid #bdd9c3",
+  color: "#477451",
   borderRadius: "9px",
-  background: "#ffffff",
-  color: "#514b46",
-  fontSize: "14px",
+  padding: "11px",
+  marginBottom: "14px",
+  fontSize: "13px",
 };
 
 const emptyStyle = {
-  padding: "45px 25px",
+  minHeight: "250px",
+  display: "flex",
+  flexDirection: "column" as const,
+  alignItems: "center",
+  justifyContent: "center",
   textAlign: "center" as const,
   color: "#716b65",
-  borderTop: "1px solid #eee7e0",
-  lineHeight: 1.6,
 };
 
 const emptyIconStyle = {
-  width: "48px",
-  height: "48px",
+  width: "50px",
+  height: "50px",
   borderRadius: "14px",
   background: "#f2ebe4",
   color: "#8a6d4b",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  margin: "0 auto 13px",
   fontWeight: 700,
-  fontSize: "18px",
+  fontSize: "20px",
+  marginBottom: "14px",
 };
 
-const tableWrapperStyle = {
-  overflowX: "auto" as const,
+const emptyTextStyle = {
+  margin: "7px 0 0",
+  fontSize: "13px",
 };
 
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  minWidth: "950px",
-};
-
-const thStyle = {
-  padding: "12px 14px",
-  borderTop: "1px solid #eee7e0",
-  borderBottom: "1px solid #e9e2da",
-  color: "#716b65",
-  fontSize: "12px",
-  fontWeight: 600,
-  textAlign: "left" as const,
-  background: "#faf8f5",
-};
-
-const tdStyle = {
-  padding: "14px",
-  borderBottom: "1px solid #f0ebe6",
-  color: "#514b46",
-  fontSize: "14px",
-  verticalAlign: "top" as const,
-};
-
-const noteStyle = {
-  marginTop: "5px",
-  color: "#9a928b",
-  fontSize: "12px",
-  maxWidth: "250px",
-};
-
-const statusButtonStyle = {
-  border: "none",
-  borderRadius: "20px",
-  padding: "6px 10px",
-  fontSize: "12px",
-  cursor: "pointer",
-};
-
-const actionsStyle = {
+const productsListStyle = {
   display: "flex",
-  gap: "7px",
+  flexDirection: "column" as const,
+  gap: "10px",
+};
+
+const productRowStyle = {
+  border: "1px solid #eee7e0",
+  borderRadius: "13px",
+  padding: "15px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "20px",
   flexWrap: "wrap" as const,
 };
 
-const editButtonStyle = {
-  border: "1px solid #ddd3c9",
-  borderRadius: "7px",
-  padding: "7px 10px",
-  background: "#ffffff",
-  color: "#665b52",
-  cursor: "pointer",
+const productMainStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  minWidth: "190px",
+};
+
+const productIconStyle = {
+  width: "40px",
+  height: "40px",
+  borderRadius: "11px",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 700,
+  flexShrink: 0,
+};
+
+const productNameStyle = {
+  fontSize: "15px",
+  fontWeight: 700,
+  color: "#292522",
+};
+
+const productMetaStyle = {
+  marginTop: "4px",
+  color: "#8a837d",
   fontSize: "12px",
 };
 
-const deleteButtonStyle = {
-  border: "1px solid #ead1cd",
-  borderRadius: "7px",
-  padding: "7px 10px",
-  background: "#fff7f6",
-  color: "#9b4d43",
-  cursor: "pointer",
-  fontSize: "12px",
+const productDetailsStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "25px",
+  flexWrap: "wrap" as const,
+};
+
+const detailLabelStyle = {
+  display: "block",
+  color: "#9a928b",
+  fontSize: "10px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.6px",
+  marginBottom: "4px",
+};
+
+const statusStyle = {
+  display: "inline-block",
+  borderRadius: "20px",
+  padding: "4px 8px",
+  fontSize: "11px",
+  fontWeight: 600,
+};
+
+const activeStatusStyle = {
+  background: "#edf7ef",
+  color: "#477451",
+};
+
+const inactiveStatusStyle = {
+  background: "#f3f1ef",
+  color: "#817a74",
 };
