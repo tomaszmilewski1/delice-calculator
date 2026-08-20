@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 type Product = {
@@ -54,6 +54,9 @@ export default function Products() {
 
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -328,6 +331,51 @@ export default function Products() {
       .toString()
       .replace(".", ",");
   }
+
+  const categories = useMemo(() => {
+    const uniqueCategories = products
+      .map((product) => product.category?.trim())
+      .filter(
+        (category): category is string =>
+          Boolean(category)
+      );
+
+    return Array.from(
+      new Set(uniqueCategories)
+    ).sort((a, b) =>
+      a.localeCompare(b, "pl")
+    );
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const cleanSearch = search
+      .trim()
+      .toLocaleLowerCase("pl");
+
+    return products.filter((product) => {
+      const matchesSearch =
+        cleanSearch === "" ||
+        product.name
+          .toLocaleLowerCase("pl")
+          .includes(cleanSearch) ||
+        (product.category ?? "")
+          .toLocaleLowerCase("pl")
+          .includes(cleanSearch);
+
+      const matchesCategory =
+        categoryFilter === "all" ||
+        product.category === categoryFilter;
+
+      return (
+        matchesSearch &&
+        matchesCategory
+      );
+    });
+  }, [
+    products,
+    search,
+    categoryFilter,
+  ]);
 
   return (
     <section style={pageStyle}>
@@ -625,6 +673,75 @@ export default function Products() {
             </button>
           </div>
 
+          <div style={filtersStyle}>
+            <div style={searchWrapperStyle}>
+              <span style={searchIconStyle}>
+                🔍
+              </span>
+
+              <input
+                type="text"
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Szukaj produktu lub kategorii..."
+                style={searchInputStyle}
+              />
+            </div>
+
+            <select
+              value={categoryFilter}
+              onChange={(event) =>
+                setCategoryFilter(
+                  event.target.value
+                )
+              }
+              style={filterSelectStyle}
+            >
+              <option value="all">
+                Wszystkie kategorie
+              </option>
+
+              {categories.map((category) => (
+                <option
+                  key={category}
+                  value={category}
+                >
+                  {category}
+                </option>
+              ))}
+            </select>
+
+            {(search !== "" ||
+              categoryFilter !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setCategoryFilter("all");
+                }}
+                style={clearFilterButtonStyle}
+              >
+                Wyczyść
+              </button>
+            )}
+          </div>
+
+          {!loading && products.length > 0 && (
+            <div style={resultsInfoStyle}>
+              Wyświetlono{" "}
+              <strong>
+                {filteredProducts.length}
+              </strong>{" "}
+              z{" "}
+              <strong>
+                {products.length}
+              </strong>{" "}
+              produktów
+            </div>
+          )}
+
           {loading ? (
             <div style={emptyStyle}>
               Ładowanie produktów...
@@ -643,9 +760,23 @@ export default function Products() {
                 Dodaj pierwszy produkt za pomocą formularza.
               </p>
             </div>
+          ) : filteredProducts.length === 0 ? (
+            <div style={emptyStyle}>
+              <div style={emptyIconStyle}>
+                ?
+              </div>
+
+              <strong>
+                Nie znaleziono produktów
+              </strong>
+
+              <p style={emptyTextStyle}>
+                Zmień wyszukiwanie lub wybierz inną kategorię.
+              </p>
+            </div>
           ) : (
             <div style={productsListStyle}>
-              {products.map((product) => (
+              {filteredProducts.map((product) => (
                 <div
                   key={product.id}
                   style={productRowStyle}
@@ -936,6 +1067,68 @@ const refreshButtonStyle = {
   padding: "8px 12px",
   cursor: "pointer",
   fontSize: "12px",
+};
+
+const filtersStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(200px, 1fr) 220px auto",
+  gap: "10px",
+  marginBottom: "12px",
+};
+
+const searchWrapperStyle = {
+  position: "relative" as const,
+};
+
+const searchIconStyle = {
+  position: "absolute" as const,
+  left: "12px",
+  top: "50%",
+  transform: "translateY(-50%)",
+  fontSize: "13px",
+  opacity: 0.6,
+};
+
+const searchInputStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  border: "1px solid #ddd3c9",
+  borderRadius: "9px",
+  padding: "11px 12px 11px 34px",
+  background: "#ffffff",
+  color: "#292522",
+  fontSize: "13px",
+  outline: "none",
+};
+
+const filterSelectStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  border: "1px solid #ddd3c9",
+  borderRadius: "9px",
+  padding: "11px 12px",
+  background: "#ffffff",
+  color: "#514b46",
+  fontSize: "13px",
+  outline: "none",
+};
+
+const clearFilterButtonStyle = {
+  border: "1px solid #ddd3c9",
+  background: "#ffffff",
+  color: "#8a6d4b",
+  borderRadius: "9px",
+  padding: "0 13px",
+  cursor: "pointer",
+  fontSize: "12px",
+  whiteSpace: "nowrap" as const,
+};
+
+const resultsInfoStyle = {
+  color: "#8a837d",
+  fontSize: "12px",
+  marginBottom: "12px",
 };
 
 const errorStyle = {
