@@ -271,6 +271,22 @@ export default function Recipes() {
     return Number.isFinite(number) ? number : 0;
   }
 
+  function parseNullableNumber(
+    value: string
+  ): number | null {
+    if (!value.trim()) {
+      return null;
+    }
+
+    const number = Number(
+      value.replace(",", ".")
+    );
+
+    return Number.isFinite(number)
+      ? number
+      : null;
+  }
+
   function formatMoney(value: number | null) {
     if (value === null || value === undefined) {
       return "—";
@@ -1204,7 +1220,9 @@ export default function Recipes() {
                   />
 
                   <span
-                    style={currencyStyle}
+                    style={
+                      currencyStyle
+                    }
                   >
                     zł
                   </span>
@@ -1237,7 +1255,9 @@ export default function Recipes() {
                   />
 
                   <span
-                    style={currencyStyle}
+                    style={
+                      currencyStyle
+                    }
                   >
                     zł
                   </span>
@@ -1251,7 +1271,9 @@ export default function Recipes() {
               </span>
 
               <div
-                style={priceInputWrapperStyle}
+                style={
+                  priceInputWrapperStyle
+                }
               >
                 <input
                   type="text"
@@ -1280,7 +1302,9 @@ export default function Recipes() {
               </span>
 
               <div
-                style={priceInputWrapperStyle}
+                style={
+                  priceInputWrapperStyle
+                }
               >
                 <input
                   type="text"
