@@ -1,12 +1,17 @@
 "use client";
 
-import {
-  FormEvent,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+
+type Product = {
+  id: string;
+  name: string;
+  category: string | null;
+  unit: string | null;
+  package_quantity: number;
+  package_price: number;
+  active: boolean;
+};
 
 type Recipe = {
   id: string;
@@ -16,15 +21,28 @@ type Recipe = {
   portions: number | null;
   diameter_cm: number | null;
   height_cm: number | null;
-  active: boolean | null;
-  created_at: string;
-  updated_at: string;
-  user_id: string | null;
+  active: boolean;
   cost: number | null;
   labor_cost: number | null;
   energy_cost: number | null;
   packaging_cost: number | null;
   margin_percent: number | null;
+  created_at: string;
+};
+
+type RecipeIngredient = {
+  id: string;
+  recipe_id: string;
+  product_id: string;
+  quantity: number;
+  unit: string;
+};
+
+type IngredientRow = {
+  id: string;
+  productId: string;
+  quantity: string;
+  unit: string;
 };
 
 type RecipeForm = {
@@ -34,62 +52,83 @@ type RecipeForm = {
   portions: string;
   diameterCm: string;
   heightCm: string;
+  laborCost: string;
+  energyCost: string;
+  packagingCost: string;
+  marginPercent: string;
   active: boolean;
 };
 
-const emptyForm: RecipeForm = {
+const emptyRecipeForm: RecipeForm = {
   name: "",
   description: "",
   category: "",
   portions: "",
   diameterCm: "",
   heightCm: "",
+  laborCost: "",
+  energyCost: "",
+  packagingCost: "",
+  marginPercent: "",
   active: true,
 };
 
 export default function Recipes() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
+
+  const [form, setForm] = useState<RecipeForm>(emptyRecipeForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [form, setForm] =
-    useState<RecipeForm>(emptyForm);
-
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
-
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] =
-    useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    loadRecipes();
+    loadData();
   }, []);
 
-  async function loadRecipes() {
+  async function loadData() {
     setLoading(true);
     setError("");
 
-    const { data, error: recipesError } =
-      await supabase
+    const [recipesResult, productsResult] = await Promise.all([
+      supabase
         .from("recipes")
         .select("*")
-        .order("name", {
-          ascending: true,
-        });
+        .order("name", { ascending: true }),
 
-    if (recipesError) {
+      supabase
+        .from("products")
+        .select("*")
+        .eq("active", true)
+        .order("name", { ascending: true }),
+    ]);
+
+    if (recipesResult.error) {
       setError(
-        `Nie udało się pobrać receptur: ${recipesError.message}`
+        `Nie udało się pobrać receptur: ${recipesResult.error.message}`
       );
       setLoading(false);
       return;
     }
 
-    setRecipes((data ?? []) as Recipe[]);
+    if (productsResult.error) {
+      setError(
+        `Nie udało się pobrać produktów: ${productsResult.error.message}`
+      );
+      setLoading(false);
+      return;
+    }
+
+    setRecipes((recipesResult.data ?? []) as Recipe[]);
+    setProducts((productsResult.data ?? []) as Product[]);
     setLoading(false);
   }
 
@@ -101,6 +140,145 @@ export default function Recipes() {
       ...current,
       [field]: value,
     }));
+  }
+
+  function addIngredient() {
+    const firstAvailableProduct = products[0];
+
+    setIngredients((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        productId: firstAvailableProduct?.id ?? "",
+        quantity: "",
+        unit: firstAvailableProduct?.unit ?? "",
+      },
+    ]);
+  }
+
+  function updateIngredient(
+    id: string,
+    field: keyof IngredientRow,
+    value: string
+  ) {
+    setIngredients((current) =>
+      current.map((ingredient) => {
+        if (ingredient.id !== id) {
+          return ingredient;
+        }
+
+        if (field === "productId") {
+          const selectedProduct = products.find(
+            (product) => product.id === value
+          );
+
+          return {
+            ...ingredient,
+            productId: value,
+            unit: selectedProduct?.unit ?? "",
+          };
+        }
+
+        return {
+          ...ingredient,
+          [field]: value,
+        };
+      })
+    );
+  }
+
+  function removeIngredient(id: string) {
+    setIngredients((current) =>
+      current.filter((ingredient) => ingredient.id !== id)
+    );
+  }
+
+  function getProduct(productId: string) {
+    return products.find(
+      (product) => product.id === productId
+    );
+  }
+
+  function getIngredientCost(
+    ingredient: IngredientRow
+  ) {
+    const product = getProduct(ingredient.productId);
+
+    if (!product) {
+      return 0;
+    }
+
+    const quantity = Number(
+      ingredient.quantity.replace(",", ".")
+    );
+
+    if (
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      product.package_quantity <= 0
+    ) {
+      return 0;
+    }
+
+    return (
+      quantity *
+      (Number(product.package_price) /
+        Number(product.package_quantity))
+    );
+  }
+
+  const ingredientsCost = useMemo(() => {
+    return ingredients.reduce(
+      (sum, ingredient) =>
+        sum + getIngredientCost(ingredient),
+      0
+    );
+  }, [ingredients, products]);
+
+  const additionalCosts = useMemo(() => {
+    const labor = parseNumber(form.laborCost);
+    const energy = parseNumber(form.energyCost);
+    const packaging = parseNumber(form.packagingCost);
+
+    return labor + energy + packaging;
+  }, [
+    form.laborCost,
+    form.energyCost,
+    form.packagingCost,
+  ]);
+
+  const totalCost = ingredientsCost + additionalCosts;
+
+  const salePrice = useMemo(() => {
+    const margin = parseNumber(form.marginPercent);
+
+    if (margin <= 0) {
+      return totalCost;
+    }
+
+    return totalCost * (1 + margin / 100);
+  }, [totalCost, form.marginPercent]);
+
+  function parseNumber(value: string) {
+    if (!value.trim()) {
+      return 0;
+    }
+
+    const number = Number(
+      value.replace(",", ".")
+    );
+
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  function formatMoney(value: number | null) {
+    if (value === null || value === undefined) {
+      return "—";
+    }
+
+    return `${Number(value)
+      .toFixed(2)
+      .replace(".", ",")} zł`;
   }
 
   function startEditing(recipe: Recipe) {
@@ -122,8 +300,26 @@ export default function Recipes() {
         recipe.height_cm !== null
           ? String(recipe.height_cm).replace(".", ",")
           : "",
-      active: recipe.active ?? true,
+      laborCost:
+        recipe.labor_cost !== null
+          ? String(recipe.labor_cost).replace(".", ",")
+          : "",
+      energyCost:
+        recipe.energy_cost !== null
+          ? String(recipe.energy_cost).replace(".", ",")
+          : "",
+      packagingCost:
+        recipe.packaging_cost !== null
+          ? String(recipe.packaging_cost).replace(".", ",")
+          : "",
+      marginPercent:
+        recipe.margin_percent !== null
+          ? String(recipe.margin_percent).replace(".", ",")
+          : "",
+      active: recipe.active,
     });
+
+    loadRecipeIngredients(recipe.id);
 
     setError("");
     setSuccess("");
@@ -134,9 +330,43 @@ export default function Recipes() {
     });
   }
 
+  async function loadRecipeIngredients(
+    recipeId: string
+  ) {
+    const { data, error: ingredientsError } =
+      await supabase
+        .from("recipe_ingredients")
+        .select("*")
+        .eq("recipe_id", recipeId)
+        .order("created_at", {
+          ascending: true,
+        });
+
+    if (ingredientsError) {
+      setError(
+        `Nie udało się pobrać składników: ${ingredientsError.message}`
+      );
+      return;
+    }
+
+    const rows = (data ?? []) as RecipeIngredient[];
+
+    setIngredients(
+      rows.map((ingredient) => ({
+        id: ingredient.id,
+        productId: ingredient.product_id,
+        quantity: String(
+          ingredient.quantity
+        ).replace(".", ","),
+        unit: ingredient.unit ?? "",
+      }))
+    );
+  }
+
   function cancelEditing() {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm(emptyRecipeForm);
+    setIngredients([]);
     setError("");
     setSuccess("");
   }
@@ -156,31 +386,64 @@ export default function Recipes() {
       return;
     }
 
-    const portionsValue =
-      form.portions.trim() === ""
-        ? null
-        : Number(
-            form.portions.replace(",", ".")
-          );
+    if (ingredients.length === 0) {
+      setError(
+        "Dodaj przynajmniej jeden składnik do receptury."
+      );
+      return;
+    }
 
-    const diameterValue =
-      form.diameterCm.trim() === ""
-        ? null
-        : Number(
-            form.diameterCm.replace(",", ".")
-          );
+    for (const ingredient of ingredients) {
+      if (!ingredient.productId) {
+        setError(
+          "Każdy składnik musi mieć wybrany produkt."
+        );
+        return;
+      }
 
-    const heightValue =
-      form.heightCm.trim() === ""
-        ? null
-        : Number(
-            form.heightCm.replace(",", ".")
-          );
+      const quantity = parseNumber(
+        ingredient.quantity
+      );
+
+      if (quantity <= 0) {
+        setError(
+          "Ilość każdego składnika musi być większa od zera."
+        );
+        return;
+      }
+    }
+
+    const portions = parseNullableNumber(
+      form.portions
+    );
+
+    const diameterCm = parseNullableNumber(
+      form.diameterCm
+    );
+
+    const heightCm = parseNullableNumber(
+      form.heightCm
+    );
+
+    const laborCost = parseNumber(
+      form.laborCost
+    );
+
+    const energyCost = parseNumber(
+      form.energyCost
+    );
+
+    const packagingCost = parseNumber(
+      form.packagingCost
+    );
+
+    const marginPercent = parseNumber(
+      form.marginPercent
+    );
 
     if (
-      portionsValue !== null &&
-      (!Number.isFinite(portionsValue) ||
-        portionsValue <= 0)
+      portions !== null &&
+      portions <= 0
     ) {
       setError(
         "Liczba porcji musi być większa od zera."
@@ -189,9 +452,8 @@ export default function Recipes() {
     }
 
     if (
-      diameterValue !== null &&
-      (!Number.isFinite(diameterValue) ||
-        diameterValue <= 0)
+      diameterCm !== null &&
+      diameterCm <= 0
     ) {
       setError(
         "Średnica musi być większa od zera."
@@ -200,9 +462,8 @@ export default function Recipes() {
     }
 
     if (
-      heightValue !== null &&
-      (!Number.isFinite(heightValue) ||
-        heightValue <= 0)
+      heightCm !== null &&
+      heightCm <= 0
     ) {
       setError(
         "Wysokość musi być większa od zera."
@@ -210,19 +471,33 @@ export default function Recipes() {
       return;
     }
 
+    if (marginPercent < 0) {
+      setError(
+        "Marża nie może być ujemna."
+      );
+      return;
+    }
+
+    setSaving(true);
+
     const recipeData = {
       name: cleanName,
       description:
         form.description.trim() || null,
       category:
         form.category.trim() || null,
-      portions: portionsValue,
-      diameter_cm: diameterValue,
-      height_cm: heightValue,
+      portions,
+      diameter_cm: diameterCm,
+      height_cm: heightCm,
       active: form.active,
+      cost: Number(totalCost.toFixed(2)),
+      labor_cost: laborCost,
+      energy_cost: energyCost,
+      packaging_cost: packagingCost,
+      margin_percent: marginPercent,
     };
 
-    setSaving(true);
+    let recipeId = editingId;
 
     if (editingId) {
       const { error: updateError } =
@@ -239,39 +514,92 @@ export default function Recipes() {
         return;
       }
 
-      setSuccess(
-        "Receptura została zaktualizowana."
-      );
+      const { error: deleteIngredientsError } =
+        await supabase
+          .from("recipe_ingredients")
+          .delete()
+          .eq("recipe_id", editingId);
+
+      if (deleteIngredientsError) {
+        setError(
+          `Nie udało się zaktualizować składników receptury: ${deleteIngredientsError.message}`
+        );
+        setSaving(false);
+        return;
+      }
     } else {
-      const { error: insertError } =
+      const { data, error: insertError } =
         await supabase
           .from("recipes")
-          .insert(recipeData);
+          .insert(recipeData)
+          .select("id")
+          .single();
 
-      if (insertError) {
+      if (insertError || !data) {
         setError(
-          `Nie udało się zapisać receptury: ${insertError.message}`
+          `Nie udało się zapisać receptury: ${
+            insertError?.message ||
+            "Brak identyfikatora receptury."
+          }`
         );
         setSaving(false);
         return;
       }
 
-      setSuccess(
-        "Receptura została dodana."
-      );
+      recipeId = data.id;
     }
 
-    setForm(emptyForm);
+    if (!recipeId) {
+      setError(
+        "Nie udało się ustalić identyfikatora receptury."
+      );
+      setSaving(false);
+      return;
+    }
+
+    const ingredientData = ingredients.map(
+      (ingredient) => ({
+        recipe_id: recipeId,
+        product_id: ingredient.productId,
+        quantity: parseNumber(
+          ingredient.quantity
+        ),
+        unit: ingredient.unit,
+      })
+    );
+
+    const {
+      error: ingredientsInsertError,
+    } = await supabase
+      .from("recipe_ingredients")
+      .insert(ingredientData);
+
+    if (ingredientsInsertError) {
+      setError(
+        `Receptura została zapisana, ale nie udało się zapisać składników: ${ingredientsInsertError.message}`
+      );
+      setSaving(false);
+      return;
+    }
+
+    setSuccess(
+      editingId
+        ? "Receptura została zaktualizowana."
+        : "Receptura została dodana."
+    );
+
+    setForm(emptyRecipeForm);
+    setIngredients([]);
     setEditingId(null);
 
-    await loadRecipes();
+    await loadData();
 
     setSaving(false);
   }
 
   async function deleteRecipe(recipe: Recipe) {
     const confirmed = window.confirm(
-      `Czy na pewno chcesz usunąć recepturę "${recipe.name}"?\n\nTej operacji nie można cofnąć.`
+      `Czy na pewno chcesz usunąć recepturę "${recipe.name}"?\n\nZostaną również usunięte jej składniki.`
     );
 
     if (!confirmed) {
@@ -281,15 +609,28 @@ export default function Recipes() {
     setError("");
     setSuccess("");
 
-    const { error: deleteError } =
+    const { error: ingredientsError } =
+      await supabase
+        .from("recipe_ingredients")
+        .delete()
+        .eq("recipe_id", recipe.id);
+
+    if (ingredientsError) {
+      setError(
+        `Nie udało się usunąć składników receptury: ${ingredientsError.message}`
+      );
+      return;
+    }
+
+    const { error: recipeError } =
       await supabase
         .from("recipes")
         .delete()
         .eq("id", recipe.id);
 
-    if (deleteError) {
+    if (recipeError) {
       setError(
-        `Nie udało się usunąć receptury: ${deleteError.message}`
+        `Nie udało się usunąć receptury: ${recipeError.message}`
       );
       return;
     }
@@ -302,20 +643,18 @@ export default function Recipes() {
       `Receptura "${recipe.name}" została usunięta.`
     );
 
-    await loadRecipes();
+    await loadData();
   }
 
   async function toggleActive(recipe: Recipe) {
     setError("");
     setSuccess("");
 
-    const newActive = !(recipe.active ?? false);
-
     const { error: updateError } =
       await supabase
         .from("recipes")
         .update({
-          active: newActive,
+          active: !recipe.active,
         })
         .eq("id", recipe.id);
 
@@ -331,61 +670,31 @@ export default function Recipes() {
         item.id === recipe.id
           ? {
               ...item,
-              active: newActive,
+              active: !item.active,
             }
           : item
       )
     );
 
     setSuccess(
-      newActive
-        ? `Receptura "${recipe.name}" została aktywowana.`
-        : `Receptura "${recipe.name}" została wyłączona.`
+      recipe.active
+        ? `Receptura "${recipe.name}" została wyłączona.`
+        : `Receptura "${recipe.name}" została aktywowana.`
     );
   }
 
-  function formatNumber(
-    value: number | null
-  ) {
-    if (
-      value === null ||
-      value === undefined
-    ) {
-      return "—";
-    }
-
-    return Number(value)
-      .toString()
-      .replace(".", ",");
-  }
-
-  function formatPrice(
-    value: number | null
-  ) {
-    if (
-      value === null ||
-      value === undefined
-    ) {
-      return "—";
-    }
-
-    return `${Number(value)
-      .toFixed(2)
-      .replace(".", ",")} zł`;
-  }
-
   const categories = useMemo(() => {
-    const uniqueCategories = recipes
-      .map((recipe) =>
-        recipe.category?.trim()
-      )
-      .filter(
-        (category): category is string =>
-          Boolean(category)
-      );
-
     return Array.from(
-      new Set(uniqueCategories)
+      new Set(
+        recipes
+          .map((recipe) =>
+            recipe.category?.trim()
+          )
+          .filter(
+            (category): category is string =>
+              Boolean(category)
+          )
+      )
     ).sort((a, b) =>
       a.localeCompare(b, "pl")
     );
@@ -434,9 +743,8 @@ export default function Recipes() {
           </h2>
 
           <p style={subtitleStyle}>
-            Twórz receptury tortów i przygotowuj
-            ich kalkulację na podstawie produktów
-            zapisanych w bazie.
+            Twórz receptury z produktów zapisanych
+            w bazie i automatycznie wyliczaj ich koszt.
           </p>
         </div>
 
@@ -463,8 +771,8 @@ export default function Recipes() {
 
               <p style={cardSubtitleStyle}>
                 {editingId
-                  ? "Zmień dane receptury i zapisz zmiany."
-                  : "Receptura zostanie zapisana w bazie Supabase."}
+                  ? "Zmień dane i składniki receptury."
+                  : "Wybierz produkty z istniejącej bazy."}
               </p>
             </div>
 
@@ -520,10 +828,30 @@ export default function Recipes() {
               />
             </label>
 
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Opis
+              </span>
+
+              <textarea
+                value={form.description}
+                onChange={(event) =>
+                  updateForm(
+                    "description",
+                    event.target.value
+                  )
+                }
+                placeholder="Opcjonalny opis receptury"
+                disabled={saving}
+                rows={3}
+                style={textareaStyle}
+              />
+            </label>
+
             <div style={twoColumnStyle}>
               <label style={labelStyle}>
                 <span style={labelTextStyle}>
-                  Liczba porcji
+                  Porcje
                 </span>
 
                 <input
@@ -544,35 +872,374 @@ export default function Recipes() {
 
               <label style={labelStyle}>
                 <span style={labelTextStyle}>
-                  Średnica
+                  Średnica cm
+                </span>
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.diameterCm}
+                  onChange={(event) =>
+                    updateForm(
+                      "diameterCm",
+                      event.target.value
+                    )
+                  }
+                  placeholder="np. 20"
+                  disabled={saving}
+                  style={inputStyle}
+                />
+              </label>
+            </div>
+
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Wysokość cm
+              </span>
+
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.heightCm}
+                onChange={(event) =>
+                  updateForm(
+                    "heightCm",
+                    event.target.value
+                  )
+                }
+                placeholder="np. 10"
+                disabled={saving}
+                style={inputStyle}
+              />
+            </label>
+
+            <div style={sectionHeaderStyle}>
+              <div>
+                <h4 style={sectionTitleStyle}>
+                  Składniki receptury
+                </h4>
+
+                <p style={sectionSubtitleStyle}>
+                  Wybierz produkt z bazy i podaj ilość.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={addIngredient}
+                disabled={
+                  saving || products.length === 0
+                }
+                style={{
+                  ...addIngredientButtonStyle,
+                  opacity:
+                    saving ||
+                    products.length === 0
+                      ? 0.5
+                      : 1,
+                }}
+              >
+                + Dodaj składnik
+              </button>
+            </div>
+
+            {products.length === 0 ? (
+              <div style={warningStyle}>
+                <strong>
+                  Brak aktywnych produktów
+                </strong>
+
+                <p style={warningTextStyle}>
+                  Najpierw dodaj produkty w module
+                  „Produkty”.
+                </p>
+              </div>
+            ) : ingredients.length === 0 ? (
+              <div style={ingredientsEmptyStyle}>
+                Nie dodano jeszcze żadnych składników.
+              </div>
+            ) : (
+              <div style={ingredientsListStyle}>
+                {ingredients.map(
+                  (ingredient, index) => {
+                    const product = getProduct(
+                      ingredient.productId
+                    );
+
+                    const ingredientCost =
+                      getIngredientCost(
+                        ingredient
+                      );
+
+                    return (
+                      <div
+                        key={ingredient.id}
+                        style={ingredientRowStyle}
+                      >
+                        <div
+                          style={
+                            ingredientNumberStyle
+                          }
+                        >
+                          {index + 1}
+                        </div>
+
+                        <div
+                          style={
+                            ingredientProductStyle
+                          }
+                        >
+                          <span
+                            style={
+                              smallLabelStyle
+                            }
+                          >
+                            Produkt
+                          </span>
+
+                          <select
+                            value={
+                              ingredient.productId
+                            }
+                            onChange={(event) =>
+                              updateIngredient(
+                                ingredient.id,
+                                "productId",
+                                event.target.value
+                              )
+                            }
+                            disabled={saving}
+                            style={inputStyle}
+                          >
+                            <option value="">
+                              Wybierz produkt
+                            </option>
+
+                            {products.map(
+                              (item) => (
+                                <option
+                                  key={item.id}
+                                  value={item.id}
+                                >
+                                  {item.name}
+                                </option>
+                              )
+                            )}
+                          </select>
+                        </div>
+
+                        <div
+                          style={
+                            ingredientQuantityStyle
+                          }
+                        >
+                          <span
+                            style={
+                              smallLabelStyle
+                            }
+                          >
+                            Ilość
+                          </span>
+
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={
+                              ingredient.quantity
+                            }
+                            onChange={(event) =>
+                              updateIngredient(
+                                ingredient.id,
+                                "quantity",
+                                event.target.value
+                              )
+                            }
+                            placeholder="np. 500"
+                            disabled={saving}
+                            style={inputStyle}
+                          />
+                        </div>
+
+                        <div
+                          style={
+                            ingredientUnitStyle
+                          }
+                        >
+                          <span
+                            style={
+                              smallLabelStyle
+                            }
+                          >
+                            Jednostka
+                          </span>
+
+                          <div
+                            style={
+                              ingredientUnitValueStyle
+                            }
+                          >
+                            {ingredient.unit ||
+                              product?.unit ||
+                              "—"}
+                          </div>
+                        </div>
+
+                        <div
+                          style={
+                            ingredientCostStyle
+                          }
+                        >
+                          <span
+                            style={
+                              smallLabelStyle
+                            }
+                          >
+                            Koszt
+                          </span>
+
+                          <strong>
+                            {formatMoney(
+                              ingredientCost
+                            )}
+                          </strong>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeIngredient(
+                              ingredient.id
+                            )
+                          }
+                          disabled={saving}
+                          style={
+                            removeIngredientButtonStyle
+                          }
+                        >
+                          Usuń
+                        </button>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            )}
+
+            <div style={costSummaryStyle}>
+              <div>
+                <span
+                  style={costSummaryLabelStyle}
+                >
+                  Koszt produktów
+                </span>
+
+                <strong
+                  style={costSummaryValueStyle}
+                >
+                  {formatMoney(
+                    ingredientsCost
+                  )}
+                </strong>
+              </div>
+
+              <div>
+                <span
+                  style={costSummaryLabelStyle}
+                >
+                  Koszty dodatkowe
+                </span>
+
+                <strong
+                  style={costSummaryValueStyle}
+                >
+                  {formatMoney(
+                    additionalCosts
+                  )}
+                </strong>
+              </div>
+
+              <div style={totalCostBoxStyle}>
+                <span
+                  style={totalCostLabelStyle}
+                >
+                  Łączny koszt receptury
+                </span>
+
+                <strong
+                  style={totalCostValueStyle}
+                >
+                  {formatMoney(totalCost)}
+                </strong>
+              </div>
+            </div>
+
+            <div style={additionalCostsHeaderStyle}>
+              Koszty dodatkowe
+            </div>
+
+            <div style={twoColumnStyle}>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
+                  Koszt pracy
                 </span>
 
                 <div
                   style={
-                    unitInputWrapperStyle
+                    priceInputWrapperStyle
                   }
                 >
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={form.diameterCm}
+                    value={form.laborCost}
                     onChange={(event) =>
                       updateForm(
-                        "diameterCm",
+                        "laborCost",
                         event.target.value
                       )
                     }
-                    placeholder="np. 20"
+                    placeholder="0,00"
                     disabled={saving}
-                    style={
-                      unitInputStyle
-                    }
+                    style={priceInputStyle}
                   />
 
                   <span
-                    style={unitLabelStyle}
+                    style={currencyStyle}
                   >
-                    cm
+                    zł
+                  </span>
+                </div>
+              </label>
+
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
+                  Koszt energii
+                </span>
+
+                <div
+                  style={
+                    priceInputWrapperStyle
+                  }
+                >
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={form.energyCost}
+                    onChange={(event) =>
+                      updateForm(
+                        "energyCost",
+                        event.target.value
+                      )
+                    }
+                    placeholder="0,00"
+                    disabled={saving}
+                    style={priceInputStyle}
+                  />
+
+                  <span
+                    style={currencyStyle}
+                  >
+                    zł
                   </span>
                 </div>
               </label>
@@ -580,58 +1247,71 @@ export default function Recipes() {
 
             <label style={labelStyle}>
               <span style={labelTextStyle}>
-                Wysokość
+                Koszt opakowania
               </span>
 
               <div
-                style={
-                  unitInputWrapperStyle
-                }
+                style={priceInputWrapperStyle}
               >
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={form.heightCm}
+                  value={form.packagingCost}
                   onChange={(event) =>
                     updateForm(
-                      "heightCm",
+                      "packagingCost",
                       event.target.value
                     )
                   }
-                  placeholder="np. 10"
+                  placeholder="0,00"
                   disabled={saving}
-                  style={
-                    unitInputStyle
-                  }
+                  style={priceInputStyle}
                 />
 
-                <span
-                  style={unitLabelStyle}
-                >
-                  cm
+                <span style={currencyStyle}>
+                  zł
                 </span>
               </div>
             </label>
 
             <label style={labelStyle}>
               <span style={labelTextStyle}>
-                Opis
+                Marża %
               </span>
 
-              <textarea
-                value={form.description}
-                onChange={(event) =>
-                  updateForm(
-                    "description",
-                    event.target.value
-                  )
-                }
-                placeholder="Opis receptury"
-                disabled={saving}
-                rows={4}
-                style={textareaStyle}
-              />
+              <div
+                style={priceInputWrapperStyle}
+              >
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.marginPercent}
+                  onChange={(event) =>
+                    updateForm(
+                      "marginPercent",
+                      event.target.value
+                    )
+                  }
+                  placeholder="np. 30"
+                  disabled={saving}
+                  style={priceInputStyle}
+                />
+
+                <span style={currencyStyle}>
+                  %
+                </span>
+              </div>
             </label>
+
+            <div style={salePriceBoxStyle}>
+              <span>
+                Cena po dodaniu marży
+              </span>
+
+              <strong>
+                {formatMoney(salePrice)}
+              </strong>
+            </div>
 
             <label
               style={checkboxLabelStyle}
@@ -667,13 +1347,22 @@ export default function Recipes() {
 
             <button
               type="submit"
-              disabled={saving}
+              disabled={
+                saving ||
+                products.length === 0
+              }
               style={{
                 ...buttonStyle,
-                opacity: saving ? 0.7 : 1,
-                cursor: saving
-                  ? "not-allowed"
-                  : "pointer",
+                opacity:
+                  saving ||
+                  products.length === 0
+                    ? 0.6
+                    : 1,
+                cursor:
+                  saving ||
+                  products.length === 0
+                    ? "not-allowed"
+                    : "pointer",
               }}
             >
               {saving
@@ -699,7 +1388,7 @@ export default function Recipes() {
 
             <button
               type="button"
-              onClick={loadRecipes}
+              onClick={loadData}
               disabled={loading}
               style={refreshButtonStyle}
             >
@@ -708,14 +1397,8 @@ export default function Recipes() {
           </div>
 
           <div style={filtersStyle}>
-            <div
-              style={
-                searchWrapperStyle
-              }
-            >
-              <span
-                style={searchIconStyle}
-              >
+            <div style={searchWrapperStyle}>
+              <span style={searchIconStyle}>
                 🔍
               </span>
 
@@ -728,9 +1411,7 @@ export default function Recipes() {
                   )
                 }
                 placeholder="Szukaj receptury lub kategorii..."
-                style={
-                  searchInputStyle
-                }
+                style={searchInputStyle}
               />
             </div>
 
@@ -760,15 +1441,12 @@ export default function Recipes() {
             </select>
 
             {(search !== "" ||
-              categoryFilter !==
-                "all") && (
+              categoryFilter !== "all") && (
               <button
                 type="button"
                 onClick={() => {
                   setSearch("");
-                  setCategoryFilter(
-                    "all"
-                  );
+                  setCategoryFilter("all");
                 }}
                 style={
                   clearFilterButtonStyle
@@ -815,7 +1493,8 @@ export default function Recipes() {
               <p
                 style={emptyTextStyle}
               >
-                Dodaj pierwszą recepturę za pomocą formularza.
+                Dodaj pierwszą recepturę za
+                pomocą formularza.
               </p>
             </div>
           ) : filteredRecipes.length ===
@@ -834,27 +1513,22 @@ export default function Recipes() {
               <p
                 style={emptyTextStyle}
               >
-                Zmień wyszukiwanie lub wybierz inną kategorię.
+                Zmień wyszukiwanie lub
+                kategorię.
               </p>
             </div>
           ) : (
             <div
-              style={
-                recipesListStyle
-              }
+              style={recipesListStyle}
             >
               {filteredRecipes.map(
                 (recipe) => (
                   <div
                     key={recipe.id}
-                    style={
-                      recipeRowStyle
-                    }
+                    style={recipeRowStyle}
                   >
                     <div
-                      style={
-                        recipeMainStyle
-                      }
+                      style={recipeMainStyle}
                     >
                       <div
                         style={
@@ -883,17 +1557,13 @@ export default function Recipes() {
                           {recipe.category ||
                             "Bez kategorii"}
 
-                          {recipe.portions !==
-                            null &&
-                            ` • ${formatNumber(
-                              recipe.portions
-                            )} porcji`}
+                          {recipe.portions
+                            ? ` • ${recipe.portions} porcji`
+                            : ""}
 
-                          {recipe.diameter_cm !==
-                            null &&
-                            ` • Ø ${formatNumber(
-                              recipe.diameter_cm
-                            )} cm`}
+                          {recipe.diameter_cm
+                            ? ` • Ø ${recipe.diameter_cm} cm`
+                            : ""}
                         </div>
                       </div>
                     </div>
@@ -913,9 +1583,33 @@ export default function Recipes() {
                         </span>
 
                         <strong>
-                          {formatPrice(
+                          {formatMoney(
                             recipe.cost
                           )}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span
+                          style={
+                            detailLabelStyle
+                          }
+                        >
+                          Marża
+                        </span>
+
+                        <strong>
+                          {recipe.margin_percent !==
+                          null
+                            ? `${Number(
+                                recipe.margin_percent
+                              )
+                                .toFixed(0)
+                                .replace(
+                                  ".",
+                                  ","
+                                )}%`
+                            : "—"}
                         </strong>
                       </div>
 
@@ -950,7 +1644,9 @@ export default function Recipes() {
                     </div>
 
                     <div
-                      style={actionsStyle}
+                      style={
+                        actionsStyle
+                      }
                     >
                       <button
                         type="button"
@@ -990,6 +1686,10 @@ export default function Recipes() {
     </section>
   );
 }
+
+/* =========================
+   STYLES
+========================= */
 
 const pageStyle = {
   width: "100%",
@@ -1036,7 +1736,7 @@ const countBadgeStyle = {
 const contentGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(300px, 380px) minmax(0, 1fr)",
+    "minmax(360px, 520px) minmax(0, 1fr)",
   gap: "20px",
   alignItems: "start",
 };
@@ -1104,22 +1804,29 @@ const inputStyle = {
   outline: "none",
 };
 
+const textareaStyle = {
+  ...inputStyle,
+  resize: "vertical" as const,
+  minHeight: "80px",
+  fontFamily: "inherit",
+};
+
 const twoColumnStyle = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
   gap: "12px",
 };
 
-const unitInputWrapperStyle = {
+const priceInputWrapperStyle = {
   position: "relative" as const,
 };
 
-const unitInputStyle = {
+const priceInputStyle = {
   ...inputStyle,
-  paddingRight: "38px",
+  paddingRight: "35px",
 };
 
-const unitLabelStyle = {
+const currencyStyle = {
   position: "absolute" as const,
   right: "12px",
   top: "50%",
@@ -1128,11 +1835,203 @@ const unitLabelStyle = {
   fontSize: "13px",
 };
 
-const textareaStyle = {
-  ...inputStyle,
-  resize: "vertical" as const,
-  minHeight: "80px",
-  fontFamily: "inherit",
+const sectionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  marginTop: "25px",
+  marginBottom: "14px",
+};
+
+const sectionTitleStyle = {
+  margin: 0,
+  color: "#292522",
+  fontSize: "15px",
+};
+
+const sectionSubtitleStyle = {
+  margin: "4px 0 0",
+  color: "#8a837d",
+  fontSize: "11px",
+};
+
+const addIngredientButtonStyle = {
+  border: "1px solid #d8c8b8",
+  background: "#ffffff",
+  color: "#8a6d4b",
+  borderRadius: "9px",
+  padding: "8px 11px",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: 600,
+  whiteSpace: "nowrap" as const,
+};
+
+const warningStyle = {
+  background: "#fff8ed",
+  border: "1px solid #ead7b8",
+  color: "#8a6d4b",
+  borderRadius: "10px",
+  padding: "13px",
+  marginBottom: "16px",
+  fontSize: "13px",
+};
+
+const warningTextStyle = {
+  margin: "5px 0 0",
+  color: "#716b65",
+  fontSize: "12px",
+};
+
+const ingredientsEmptyStyle = {
+  border: "1px dashed #ddd3c9",
+  borderRadius: "10px",
+  padding: "20px",
+  textAlign: "center" as const,
+  color: "#8a837d",
+  fontSize: "12px",
+  marginBottom: "16px",
+};
+
+const ingredientsListStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "10px",
+  marginBottom: "16px",
+};
+
+const ingredientRowStyle = {
+  border: "1px solid #eee7e0",
+  borderRadius: "11px",
+  padding: "11px",
+  display: "grid",
+  gridTemplateColumns:
+    "28px minmax(150px, 1.5fr) minmax(80px, 0.7fr) 70px 85px auto",
+  gap: "8px",
+  alignItems: "end",
+};
+
+const ingredientNumberStyle = {
+  width: "28px",
+  height: "28px",
+  borderRadius: "8px",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "11px",
+  fontWeight: 700,
+  marginBottom: "2px",
+};
+
+const ingredientProductStyle = {
+  minWidth: 0,
+};
+
+const ingredientQuantityStyle = {
+  minWidth: 0,
+};
+
+const ingredientUnitStyle = {
+  minWidth: 0,
+};
+
+const ingredientCostStyle = {
+  minWidth: 0,
+  paddingBottom: "11px",
+};
+
+const smallLabelStyle = {
+  display: "block",
+  color: "#9a928b",
+  fontSize: "9px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.5px",
+  marginBottom: "5px",
+};
+
+const ingredientUnitValueStyle = {
+  height: "40px",
+  display: "flex",
+  alignItems: "center",
+  color: "#514b46",
+  fontSize: "13px",
+  fontWeight: 600,
+};
+
+const removeIngredientButtonStyle = {
+  border: "1px solid #e3c1bd",
+  background: "#fff8f7",
+  color: "#a34f46",
+  borderRadius: "8px",
+  padding: "8px 9px",
+  cursor: "pointer",
+  fontSize: "11px",
+  marginBottom: "1px",
+};
+
+const costSummaryStyle = {
+  background: "#f7f3ef",
+  border: "1px solid #e6d9cd",
+  borderRadius: "11px",
+  padding: "13px",
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "9px",
+  marginBottom: "20px",
+};
+
+const costSummaryLabelStyle = {
+  display: "block",
+  color: "#716b65",
+  fontSize: "11px",
+  marginBottom: "2px",
+};
+
+const costSummaryValueStyle = {
+  color: "#514b46",
+  fontSize: "13px",
+};
+
+const totalCostBoxStyle = {
+  borderTop: "1px solid #dfd2c6",
+  paddingTop: "10px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+};
+
+const totalCostLabelStyle = {
+  color: "#292522",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const totalCostValueStyle = {
+  color: "#8a6d4b",
+  fontSize: "19px",
+};
+
+const additionalCostsHeaderStyle = {
+  color: "#514b46",
+  fontSize: "14px",
+  fontWeight: 700,
+  marginBottom: "13px",
+};
+
+const salePriceBoxStyle = {
+  background: "#f0f8f2",
+  border: "1px solid #bdd9c3",
+  borderRadius: "10px",
+  padding: "12px 13px",
+  marginBottom: "17px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  color: "#477451",
+  fontSize: "12px",
 };
 
 const checkboxLabelStyle = {
@@ -1309,7 +2208,7 @@ const recipeMainStyle = {
   display: "flex",
   alignItems: "center",
   gap: "12px",
-  minWidth: "220px",
+  minWidth: "190px",
 };
 
 const recipeIconStyle = {
