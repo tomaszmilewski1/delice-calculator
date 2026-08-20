@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Recipes from "../components/recipes";
-import Products from "../components/products";
+import Recipes from "../components/Recipes";
+import Products from "../components/Products";
 
 type ActivePanel = "products" | "recipes";
 
