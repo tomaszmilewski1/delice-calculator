@@ -144,44 +144,34 @@ export default function Recipes() {
     }));
   }
 
-  function parseNumber(value: string | number | null | undefined) {
-    if (value === null || value === undefined) {
+  function parseNumber(value: string) {
+    if (!value.trim()) {
       return 0;
     }
 
-    const text = String(value).trim();
-
-    if (!text) {
-      return 0;
-    }
-
-    const number = Number(text.replace(",", "."));
+    const number = Number(value.replace(",", "."));
 
     return Number.isFinite(number) ? number : 0;
   }
 
-  function parseNullableNumber(
-    value: string | number | null | undefined
-  ): number | null {
-    if (value === null || value === undefined) {
+  function parseNullableNumber(value: string): number | null {
+    if (!value.trim()) {
       return null;
     }
 
-    const text = String(value).trim();
-
-    if (!text) {
-      return null;
-    }
-
-    const number = Number(text.replace(",", "."));
+    const number = Number(value.replace(",", "."));
 
     return Number.isFinite(number) ? number : null;
   }
 
-  function formatMoney(value: number | null | undefined) {
-    const number = Number(value ?? 0);
+  function formatMoney(value: number | null) {
+    if (value === null || value === undefined) {
+      return "—";
+    }
 
-    return `${number.toFixed(2).replace(".", ",")} zł`;
+    return `${Number(value)
+      .toFixed(2)
+      .replace(".", ",")} zł`;
   }
 
   function addIngredient() {
@@ -243,23 +233,6 @@ export default function Recipes() {
     return products.find((product) => product.id === productId);
   }
 
-  /*
-    ========================================
-    KOSZT JEDNEGO SKŁADNIKA
-    ========================================
-
-    Przykład:
-
-    Opakowanie mąki:
-    1000 g = 10 zł
-
-    Receptura:
-    500 g
-
-    Koszt:
-    500 / 1000 × 10 = 5 zł
-  */
-
   function getIngredientCost(ingredient: IngredientRow) {
     const product = getProduct(ingredient.productId);
 
@@ -268,93 +241,60 @@ export default function Recipes() {
     }
 
     const quantity = parseNumber(ingredient.quantity);
-    const packageQuantity = parseNumber(product.package_quantity);
-    const packagePrice = parseNumber(product.package_price);
+
+    const packageQuantity = Number(product.package_quantity);
+    const packagePrice = Number(product.package_price);
 
     if (
       quantity <= 0 ||
+      !Number.isFinite(quantity) ||
       packageQuantity <= 0 ||
-      packagePrice < 0
+      !Number.isFinite(packageQuantity) ||
+      packagePrice < 0 ||
+      !Number.isFinite(packagePrice)
     ) {
       return 0;
     }
 
-    return (
-      quantity *
-      (packagePrice / packageQuantity)
-    );
+    return quantity * (packagePrice / packageQuantity);
   }
 
   const ingredientsCost = useMemo(() => {
-    return ingredients.reduce(
-      (sum, ingredient) =>
-        sum + getIngredientCost(ingredient),
-      0
-    );
+    return ingredients.reduce((sum, ingredient) => {
+      return sum + getIngredientCost(ingredient);
+    }, 0);
   }, [ingredients, products]);
 
-  const laborCost = useMemo(
-    () => parseNumber(form.laborCost),
-    [form.laborCost]
-  );
+  const laborCost = useMemo(() => {
+    return parseNumber(form.laborCost);
+  }, [form.laborCost]);
 
-  const energyCost = useMemo(
-    () => parseNumber(form.energyCost),
-    [form.energyCost]
-  );
+  const energyCost = useMemo(() => {
+    return parseNumber(form.energyCost);
+  }, [form.energyCost]);
 
-  const packagingCost = useMemo(
-    () => parseNumber(form.packagingCost),
-    [form.packagingCost]
-  );
+  const packagingCost = useMemo(() => {
+    return parseNumber(form.packagingCost);
+  }, [form.packagingCost]);
 
   const additionalCosts = useMemo(() => {
-    return (
-      laborCost +
-      energyCost +
-      packagingCost
-    );
-  }, [
-    laborCost,
-    energyCost,
-    packagingCost,
-  ]);
+    return laborCost + energyCost + packagingCost;
+  }, [laborCost, energyCost, packagingCost]);
 
   const totalCost = useMemo(() => {
     return ingredientsCost + additionalCosts;
-  }, [
-    ingredientsCost,
-    additionalCosts,
-  ]);
+  }, [ingredientsCost, additionalCosts]);
 
-  const marginPercent = useMemo(
-    () => parseNumber(form.marginPercent),
-    [form.marginPercent]
-  );
+  const marginPercent = useMemo(() => {
+    return parseNumber(form.marginPercent);
+  }, [form.marginPercent]);
 
   const salePrice = useMemo(() => {
-    return (
-      totalCost *
-      (1 + marginPercent / 100)
-    );
-  }, [
-    totalCost,
-    marginPercent,
-  ]);
+    return totalCost * (1 + marginPercent / 100);
+  }, [totalCost, marginPercent]);
 
-  /*
-    ========================================
-    POBIERANIE SKŁADNIKÓW RECEPTURY
-    ========================================
-  */
-
-  async function loadRecipeIngredients(
-    recipeId: string
-  ) {
-    const {
-      data,
-      error: ingredientsError,
-    } = await supabase
+  async function loadRecipeIngredients(recipeId: string) {
+    const { data, error: ingredientsError } = await supabase
       .from("recipe_ingredients")
       .select("*")
       .eq("recipe_id", recipeId)
@@ -369,26 +309,17 @@ export default function Recipes() {
       return;
     }
 
-    const rows =
-      (data ?? []) as RecipeIngredient[];
+    const rows = (data ?? []) as RecipeIngredient[];
 
     setIngredients(
       rows.map((ingredient) => ({
         id: ingredient.id,
         productId: ingredient.product_id,
-        quantity: String(
-          ingredient.quantity
-        ).replace(".", ","),
+        quantity: String(ingredient.quantity).replace(".", ","),
         unit: ingredient.unit ?? "",
       }))
     );
   }
-
-  /*
-    ========================================
-    EDYCJA RECEPTURY
-    ========================================
-  */
 
   async function startEditing(recipe: Recipe) {
     setEditingId(recipe.id);
@@ -397,61 +328,34 @@ export default function Recipes() {
       name: recipe.name ?? "",
       description: recipe.description ?? "",
       category: recipe.category ?? "",
-
       portions:
         recipe.portions !== null
-          ? String(recipe.portions).replace(
-              ".",
-              ","
-            )
+          ? String(recipe.portions).replace(".", ",")
           : "",
-
       diameterCm:
         recipe.diameter_cm !== null
-          ? String(recipe.diameter_cm).replace(
-              ".",
-              ","
-            )
+          ? String(recipe.diameter_cm).replace(".", ",")
           : "",
-
       heightCm:
         recipe.height_cm !== null
-          ? String(recipe.height_cm).replace(
-              ".",
-              ","
-            )
+          ? String(recipe.height_cm).replace(".", ",")
           : "",
-
       laborCost:
         recipe.labor_cost !== null
-          ? String(recipe.labor_cost).replace(
-              ".",
-              ","
-            )
+          ? String(recipe.labor_cost).replace(".", ",")
           : "",
-
       energyCost:
         recipe.energy_cost !== null
-          ? String(recipe.energy_cost).replace(
-              ".",
-              ","
-            )
+          ? String(recipe.energy_cost).replace(".", ",")
           : "",
-
       packagingCost:
         recipe.packaging_cost !== null
-          ? String(
-              recipe.packaging_cost
-            ).replace(".", ",")
+          ? String(recipe.packaging_cost).replace(".", ",")
           : "",
-
       marginPercent:
         recipe.margin_percent !== null
-          ? String(
-              recipe.margin_percent
-            ).replace(".", ",")
+          ? String(recipe.margin_percent).replace(".", ",")
           : "",
-
       active: recipe.active,
     });
 
@@ -475,12 +379,6 @@ export default function Recipes() {
     setSuccess("");
   }
 
-  /*
-    ========================================
-    ZAPIS RECEPTURY
-    ========================================
-  */
-
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -492,9 +390,7 @@ export default function Recipes() {
     const cleanName = form.name.trim();
 
     if (!cleanName) {
-      setError(
-        "Podaj nazwę receptury."
-      );
+      setError("Podaj nazwę receptury.");
       return;
     }
 
@@ -505,10 +401,6 @@ export default function Recipes() {
       return;
     }
 
-    /*
-      Sprawdzamy składniki.
-    */
-
     for (const ingredient of ingredients) {
       if (!ingredient.productId) {
         setError(
@@ -517,10 +409,7 @@ export default function Recipes() {
         return;
       }
 
-      const quantity =
-        parseNumber(
-          ingredient.quantity
-        );
+      const quantity = parseNumber(ingredient.quantity);
 
       if (quantity <= 0) {
         setError(
@@ -528,290 +417,99 @@ export default function Recipes() {
         );
         return;
       }
-
-      const product =
-        getProduct(
-          ingredient.productId
-        );
-
-      if (!product) {
-        setError(
-          "Nie znaleziono produktu dla jednego ze składników."
-        );
-        return;
-      }
-
-      if (
-        parseNumber(
-          product.package_quantity
-        ) <= 0
-      ) {
-        setError(
-          `Produkt "${product.name}" ma nieprawidłową ilość opakowania.`
-        );
-        return;
-      }
     }
 
-    const portions =
-      parseNullableNumber(
-        form.portions
-      );
+    const portions = parseNullableNumber(form.portions);
+    const diameterCm = parseNullableNumber(form.diameterCm);
+    const heightCm = parseNullableNumber(form.heightCm);
 
-    const diameterCm =
-      parseNullableNumber(
-        form.diameterCm
-      );
+    const currentLaborCost = parseNumber(form.laborCost);
+    const currentEnergyCost = parseNumber(form.energyCost);
+    const currentPackagingCost = parseNumber(
+      form.packagingCost
+    );
+    const currentMarginPercent = parseNumber(
+      form.marginPercent
+    );
 
-    const heightCm =
-      parseNullableNumber(
-        form.heightCm
-      );
-
-    const currentLaborCost =
-      parseNumber(
-        form.laborCost
-      );
-
-    const currentEnergyCost =
-      parseNumber(
-        form.energyCost
-      );
-
-    const currentPackagingCost =
-      parseNumber(
-        form.packagingCost
-      );
-
-    const currentMarginPercent =
-      parseNumber(
-        form.marginPercent
-      );
-
-    if (
-      portions !== null &&
-      portions <= 0
-    ) {
-      setError(
-        "Liczba porcji musi być większa od zera."
-      );
+    if (portions !== null && portions <= 0) {
+      setError("Liczba porcji musi być większa od zera.");
       return;
     }
 
-    if (
-      diameterCm !== null &&
-      diameterCm <= 0
-    ) {
-      setError(
-        "Średnica musi być większa od zera."
-      );
+    if (diameterCm !== null && diameterCm <= 0) {
+      setError("Średnica musi być większa od zera.");
       return;
     }
 
-    if (
-      heightCm !== null &&
-      heightCm <= 0
-    ) {
-      setError(
-        "Wysokość musi być większa od zera."
-      );
+    if (heightCm !== null && heightCm <= 0) {
+      setError("Wysokość musi być większa od zera.");
       return;
     }
 
     if (currentLaborCost < 0) {
-      setError(
-        "Koszt pracy nie może być ujemny."
-      );
+      setError("Koszt pracy nie może być ujemny.");
       return;
     }
 
     if (currentEnergyCost < 0) {
-      setError(
-        "Koszt energii nie może być ujemny."
-      );
+      setError("Koszt energii nie może być ujemny.");
       return;
     }
 
-    if (
-      currentPackagingCost < 0
-    ) {
-      setError(
-        "Koszt opakowania nie może być ujemny."
-      );
+    if (currentPackagingCost < 0) {
+      setError("Koszt opakowania nie może być ujemny.");
       return;
     }
 
-    if (
-      currentMarginPercent < 0
-    ) {
-      setError(
-        "Marża nie może być ujemna."
-      );
+    if (currentMarginPercent < 0) {
+      setError("Marża nie może być ujemna.");
       return;
     }
 
     /*
-      ========================================
-      LICZYMY KOSZT PRODUKTÓW JESZCZE RAZ
-      BEZPOŚREDNIO PRZED ZAPISEM
-      ========================================
+      =====================================================
+      NAJWAŻNIEJSZE:
+      KOSZT RECEPTURY = PRODUKTY + PRACA + ENERGIA + OPAKOWANIE
+      =====================================================
     */
 
-    const calculatedProductsCost =
-      ingredients.reduce(
-        (sum, ingredient) => {
-          const product =
-            getProduct(
-              ingredient.productId
-            );
-
-          if (!product) {
-            return sum;
-          }
-
-          const quantity =
-            parseNumber(
-              ingredient.quantity
-            );
-
-          const packageQuantity =
-            parseNumber(
-              product.package_quantity
-            );
-
-          const packagePrice =
-            parseNumber(
-              product.package_price
-            );
-
-          if (
-            quantity <= 0 ||
-            packageQuantity <= 0
-          ) {
-            return sum;
-          }
-
-          const ingredientCost =
-            quantity *
-            (packagePrice /
-              packageQuantity);
-
-          return (
-            sum + ingredientCost
-          );
-        },
-        0
-      );
-
-    /*
-      ========================================
-      KOSZTY DODATKOWE
-      ========================================
-    */
-
-    const calculatedAdditionalCosts =
-      currentLaborCost +
-      currentEnergyCost +
-      currentPackagingCost;
-
-    /*
-      ========================================
-      CAŁKOWITY KOSZT RECEPTURY
-      ========================================
-    */
-
-    const calculatedTotalCost =
-      calculatedProductsCost +
-      calculatedAdditionalCosts;
-
-    /*
-      ========================================
-      CENA SPRZEDAŻY
-      ========================================
-    */
-
-    const calculatedSalePrice =
-      calculatedTotalCost *
-      (1 +
-        currentMarginPercent / 100);
-
-    console.log(
-      "KOSZT PRODUKTÓW:",
-      calculatedProductsCost
+    const calculatedIngredientsCost = Number(
+      ingredients
+        .reduce((sum, ingredient) => {
+          return sum + getIngredientCost(ingredient);
+        }, 0)
+        .toFixed(2)
     );
 
-    console.log(
-      "KOSZT PRACY:",
-      currentLaborCost
+    const calculatedAdditionalCosts = Number(
+      (
+        currentLaborCost +
+        currentEnergyCost +
+        currentPackagingCost
+      ).toFixed(2)
     );
 
-    console.log(
-      "KOSZT ENERGII:",
-      currentEnergyCost
+    const calculatedTotalCost = Number(
+      (
+        calculatedIngredientsCost +
+        calculatedAdditionalCosts
+      ).toFixed(2)
     );
-
-    console.log(
-      "KOSZT OPAKOWANIA:",
-      currentPackagingCost
-    );
-
-    console.log(
-      "KOSZTY DODATKOWE:",
-      calculatedAdditionalCosts
-    );
-
-    console.log(
-      "ŁĄCZNY KOSZT:",
-      calculatedTotalCost
-    );
-
-    console.log(
-      "MARŻA:",
-      currentMarginPercent
-    );
-
-    console.log(
-      "CENA SPRZEDAŻY:",
-      calculatedSalePrice
-    );
-
-    /*
-      ========================================
-      DANE DO SUPABASE
-      ========================================
-    */
 
     const recipeData = {
       name: cleanName,
-
-      description:
-        form.description.trim() ||
-        null,
-
-      category:
-        form.category.trim() ||
-        null,
-
+      description: form.description.trim() || null,
+      category: form.category.trim() || null,
       portions,
-
-      diameter_cm:
-        diameterCm,
-
-      height_cm:
-        heightCm,
-
-      active:
-        form.active,
+      diameter_cm: diameterCm,
+      height_cm: heightCm,
+      active: form.active,
 
       /*
-        NAJWAŻNIEJSZE:
-        zapisujemy pełny koszt,
-        czyli produkty + praca + energia + opakowanie.
+        Tutaj zapisujemy PEŁNY koszt.
       */
-
-      cost: Number(
-        calculatedTotalCost.toFixed(2)
-      ),
+      cost: calculatedTotalCost,
 
       labor_cost: Number(
         currentLaborCost.toFixed(2)
@@ -832,20 +530,16 @@ export default function Recipes() {
 
     setSaving(true);
 
-    let recipeId:
-      | string
-      | null = editingId;
+    let recipeId: string | null = editingId;
 
     /*
-      ========================================
-      EDYCJA
-      ========================================
+      ==========================================
+      EDYCJA ISTNIEJĄCEJ RECEPTURY
+      ==========================================
     */
 
     if (editingId) {
-      const {
-        error: updateError,
-      } = await supabase
+      const { error: updateError } = await supabase
         .from("recipes")
         .update(recipeData)
         .eq("id", editingId);
@@ -862,20 +556,13 @@ export default function Recipes() {
         Usuwamy stare składniki.
       */
 
-      const {
-        error:
-          deleteIngredientsError,
-      } = await supabase
-        .from("recipe_ingredients")
-        .delete()
-        .eq(
-          "recipe_id",
-          editingId
-        );
+      const { error: deleteIngredientsError } =
+        await supabase
+          .from("recipe_ingredients")
+          .delete()
+          .eq("recipe_id", editingId);
 
-      if (
-        deleteIngredientsError
-      ) {
+      if (deleteIngredientsError) {
         setError(
           `Nie udało się zaktualizować składników receptury: ${deleteIngredientsError.message}`
         );
@@ -885,25 +572,20 @@ export default function Recipes() {
     }
 
     /*
-      ========================================
+      ==========================================
       NOWA RECEPTURA
-      ========================================
+      ==========================================
     */
 
     else {
-      const {
-        data,
-        error: insertError,
-      } = await supabase
-        .from("recipes")
-        .insert(recipeData)
-        .select("id")
-        .single();
+      const { data, error: insertError } =
+        await supabase
+          .from("recipes")
+          .insert(recipeData)
+          .select("id")
+          .single();
 
-      if (
-        insertError ||
-        !data
-      ) {
+      if (insertError || !data) {
         setError(
           `Nie udało się zapisać receptury: ${
             insertError?.message ||
@@ -915,8 +597,7 @@ export default function Recipes() {
         return;
       }
 
-      recipeId =
-        data.id;
+      recipeId = data.id;
     }
 
     if (!recipeId) {
@@ -929,44 +610,37 @@ export default function Recipes() {
     }
 
     /*
-      ========================================
-      ZAPIS SKŁADNIKÓW
-      ========================================
+      ==========================================
+      PRZYGOTOWANIE SKŁADNIKÓW
+      ==========================================
     */
 
-    const ingredientData =
-      ingredients.map(
-        (ingredient) => ({
-          recipe_id:
-            recipeId,
-          product_id:
-            ingredient.productId,
-          quantity: Number(
-            parseNumber(
-              ingredient.quantity
-            ).toFixed(3)
-          ),
-          unit:
-            ingredient.unit ||
-            getProduct(
-              ingredient.productId
-            )?.unit ||
-            "",
-        })
-      );
+    const ingredientData = ingredients.map(
+      (ingredient) => ({
+        recipe_id: recipeId,
+        product_id: ingredient.productId,
+        quantity: Number(
+          parseNumber(
+            ingredient.quantity
+          ).toFixed(3)
+        ),
+        unit: ingredient.unit,
+      })
+    );
+
+    /*
+      ==========================================
+      ZAPIS SKŁADNIKÓW
+      ==========================================
+    */
 
     const {
-      error:
-        ingredientsInsertError,
+      error: ingredientsInsertError,
     } = await supabase
       .from("recipe_ingredients")
-      .insert(
-        ingredientData
-      );
+      .insert(ingredientData);
 
-    if (
-      ingredientsInsertError
-    ) {
+    if (ingredientsInsertError) {
       setError(
         `Receptura została zapisana, ale nie udało się zapisać składników: ${ingredientsInsertError.message}`
       );
@@ -976,31 +650,65 @@ export default function Recipes() {
     }
 
     /*
-      ========================================
+      =====================================================
+      BARDZO WAŻNA POPRAWKA
+      =====================================================
+
+      Po zapisaniu składników ponownie zapisujemy
+      wszystkie koszty do recipes.
+
+      Jest to celowe zabezpieczenie na wypadek,
+      gdyby trigger w Supabase po zmianie
+      recipe_ingredients zmieniał pole "cost".
+
+      Dzięki temu końcowa wartość będzie:
+
+      produkty + praca + energia + opakowanie
+    */
+
+    const { error: finalCostUpdateError } =
+      await supabase
+        .from("recipes")
+        .update({
+          cost: calculatedTotalCost,
+          labor_cost: Number(
+            currentLaborCost.toFixed(2)
+          ),
+          energy_cost: Number(
+            currentEnergyCost.toFixed(2)
+          ),
+          packaging_cost: Number(
+            currentPackagingCost.toFixed(2)
+          ),
+          margin_percent: Number(
+            currentMarginPercent.toFixed(2)
+          ),
+        })
+        .eq("id", recipeId);
+
+    if (finalCostUpdateError) {
+      setError(
+        `Receptura i składniki zostały zapisane, ale nie udało się zapisać końcowego kosztu receptury: ${finalCostUpdateError.message}`
+      );
+
+      setSaving(false);
+      return;
+    }
+
+    /*
+      ==========================================
       SUKCES
-      ========================================
+      ==========================================
     */
 
     setSuccess(
       editingId
-        ? `Receptura została zaktualizowana. Łączny koszt: ${formatMoney(
-            calculatedTotalCost
-          )}, cena z marżą: ${formatMoney(
-            calculatedSalePrice
-          )}.`
-        : `Receptura została dodana. Łączny koszt: ${formatMoney(
-            calculatedTotalCost
-          )}, cena z marżą: ${formatMoney(
-            calculatedSalePrice
-          )}.`
+        ? "Receptura została zaktualizowana."
+        : "Receptura została dodana."
     );
 
-    setForm(
-      emptyRecipeForm
-    );
-
+    setForm(emptyRecipeForm);
     setIngredients([]);
-
     setEditingId(null);
 
     await loadData();
@@ -1008,19 +716,10 @@ export default function Recipes() {
     setSaving(false);
   }
 
-  /*
-    ========================================
-    USUWANIE
-    ========================================
-  */
-
-  async function deleteRecipe(
-    recipe: Recipe
-  ) {
-    const confirmed =
-      window.confirm(
-        `Czy na pewno chcesz usunąć recepturę "${recipe.name}"?\n\nZostaną również usunięte jej składniki.`
-      );
+  async function deleteRecipe(recipe: Recipe) {
+    const confirmed = window.confirm(
+      `Czy na pewno chcesz usunąć recepturę "${recipe.name}"?\n\nZostaną również usunięte jej składniki.`
+    );
 
     if (!confirmed) {
       return;
@@ -1029,16 +728,11 @@ export default function Recipes() {
     setError("");
     setSuccess("");
 
-    const {
-      error:
-        ingredientsError,
-    } = await supabase
-      .from("recipe_ingredients")
-      .delete()
-      .eq(
-        "recipe_id",
-        recipe.id
-      );
+    const { error: ingredientsError } =
+      await supabase
+        .from("recipe_ingredients")
+        .delete()
+        .eq("recipe_id", recipe.id);
 
     if (ingredientsError) {
       setError(
@@ -1047,15 +741,11 @@ export default function Recipes() {
       return;
     }
 
-    const {
-      error: recipeError,
-    } = await supabase
-      .from("recipes")
-      .delete()
-      .eq(
-        "id",
-        recipe.id
-      );
+    const { error: recipeError } =
+      await supabase
+        .from("recipes")
+        .delete()
+        .eq("id", recipe.id);
 
     if (recipeError) {
       setError(
@@ -1064,10 +754,7 @@ export default function Recipes() {
       return;
     }
 
-    if (
-      editingId ===
-      recipe.id
-    ) {
+    if (editingId === recipe.id) {
       cancelEditing();
     }
 
@@ -1078,33 +765,19 @@ export default function Recipes() {
     await loadData();
   }
 
-  /*
-    ========================================
-    AKTYWNA / NIEAKTYWNA
-    ========================================
-  */
-
-  async function toggleActive(
-    recipe: Recipe
-  ) {
+  async function toggleActive(recipe: Recipe) {
     setError("");
     setSuccess("");
 
-    const newActiveStatus =
-      !recipe.active;
+    const newActiveStatus = !recipe.active;
 
-    const {
-      error: updateError,
-    } = await supabase
-      .from("recipes")
-      .update({
-        active:
-          newActiveStatus,
-      })
-      .eq(
-        "id",
-        recipe.id
-      );
+    const { error: updateError } =
+      await supabase
+        .from("recipes")
+        .update({
+          active: newActiveStatus,
+        })
+        .eq("id", recipe.id);
 
     if (updateError) {
       setError(
@@ -1113,19 +786,15 @@ export default function Recipes() {
       return;
     }
 
-    setRecipes(
-      (current) =>
-        current.map(
-          (item) =>
-            item.id ===
-            recipe.id
-              ? {
-                  ...item,
-                  active:
-                    newActiveStatus,
-                }
-              : item
-        )
+    setRecipes((current) =>
+      current.map((item) =>
+        item.id === recipe.id
+          ? {
+              ...item,
+              active: newActiveStatus,
+            }
+          : item
+      )
     );
 
     setSuccess(
@@ -1135,174 +804,93 @@ export default function Recipes() {
     );
   }
 
-  /*
-    ========================================
-    KATEGORIE
-    ========================================
-  */
-
-  const categories =
-    useMemo(() => {
-      return Array.from(
-        new Set(
-          recipes
-            .map(
-              (recipe) =>
-                recipe.category?.trim()
-            )
-            .filter(
-              (
-                category
-              ): category is string =>
-                Boolean(
-                  category
-                )
-            )
-        )
-      ).sort(
-        (a, b) =>
-          a.localeCompare(
-            b,
-            "pl"
+  const categories = useMemo(() => {
+    return Array.from(
+      new Set(
+        recipes
+          .map((recipe) =>
+            recipe.category?.trim()
           )
+          .filter(
+            (category): category is string =>
+              Boolean(category)
+          )
+      )
+    ).sort((a, b) =>
+      a.localeCompare(b, "pl")
+    );
+  }, [recipes]);
+
+  const filteredRecipes = useMemo(() => {
+    const cleanSearch = search
+      .trim()
+      .toLocaleLowerCase("pl");
+
+    return recipes.filter((recipe) => {
+      const matchesSearch =
+        cleanSearch === "" ||
+        recipe.name
+          .toLocaleLowerCase("pl")
+          .includes(cleanSearch) ||
+        (recipe.category ?? "")
+          .toLocaleLowerCase("pl")
+          .includes(cleanSearch);
+
+      const matchesCategory =
+        categoryFilter === "all" ||
+        recipe.category === categoryFilter;
+
+      return (
+        matchesSearch &&
+        matchesCategory
       );
-    }, [recipes]);
-
-  /*
-    ========================================
-    FILTROWANIE
-    ========================================
-  */
-
-  const filteredRecipes =
-    useMemo(() => {
-      const cleanSearch =
-        search
-          .trim()
-          .toLocaleLowerCase(
-            "pl"
-          );
-
-      return recipes.filter(
-        (recipe) => {
-          const matchesSearch =
-            cleanSearch === "" ||
-            recipe.name
-              .toLocaleLowerCase(
-                "pl"
-              )
-              .includes(
-                cleanSearch
-              ) ||
-            (
-              recipe.category ??
-              ""
-            )
-              .toLocaleLowerCase(
-                "pl"
-              )
-              .includes(
-                cleanSearch
-              );
-
-          const matchesCategory =
-            categoryFilter ===
-              "all" ||
-            recipe.category ===
-              categoryFilter;
-
-          return (
-            matchesSearch &&
-            matchesCategory
-          );
-        }
-      );
-    }, [
-      recipes,
-      search,
-      categoryFilter,
-    ]);
+    });
+  }, [
+    recipes,
+    search,
+    categoryFilter,
+  ]);
 
   return (
     <section style={pageStyle}>
       <div style={headerStyle}>
         <div>
-          <div
-            style={
-              eyebrowStyle
-            }
-          >
+          <div style={eyebrowStyle}>
             BAZA RECEPTUR
           </div>
 
-          <h2
-            style={
-              titleStyle
-            }
-          >
+          <h2 style={titleStyle}>
             Receptury
           </h2>
 
-          <p
-            style={
-              subtitleStyle
-            }
-          >
-            Twórz receptury z
-            produktów zapisanych
-            w bazie i
-            automatycznie
-            wyliczaj ich koszt.
+          <p style={subtitleStyle}>
+            Twórz receptury z produktów zapisanych
+            w bazie i automatycznie wyliczaj ich koszt.
           </p>
         </div>
 
-        <div
-          style={
-            countBadgeStyle
-          }
-        >
+        <div style={countBadgeStyle}>
           {recipes.length}{" "}
           {recipes.length === 1
             ? "receptura"
-            : recipes.length >=
-                2 &&
+            : recipes.length >= 2 &&
               recipes.length <= 4
             ? "receptury"
             : "receptur"}
         </div>
       </div>
 
-      <div
-        style={
-          contentGridStyle
-        }
-      >
-        <div
-          style={
-            formCardStyle
-          }
-        >
-          <div
-            style={
-              cardHeaderStyle
-            }
-          >
+      <div style={contentGridStyle}>
+        <div style={formCardStyle}>
+          <div style={cardHeaderStyle}>
             <div>
-              <h3
-                style={
-                  cardTitleStyle
-                }
-              >
+              <h3 style={cardTitleStyle}>
                 {editingId
                   ? "Edytuj recepturę"
                   : "Dodaj recepturę"}
               </h3>
 
-              <p
-                style={
-                  cardSubtitleStyle
-                }
-              >
+              <p style={cardSubtitleStyle}>
                 {editingId
                   ? "Zmień dane i składniki receptury."
                   : "Wybierz produkty z istniejącej bazy."}
@@ -1312,294 +900,163 @@ export default function Recipes() {
             {editingId && (
               <button
                 type="button"
-                onClick={
-                  cancelEditing
-                }
-                style={
-                  cancelButtonStyle
-                }
+                onClick={cancelEditing}
+                style={cancelButtonStyle}
               >
                 Anuluj
               </button>
             )}
           </div>
 
-          <form
-            onSubmit={
-              handleSubmit
-            }
-          >
-            <label
-              style={
-                labelStyle
-              }
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
+          <form onSubmit={handleSubmit}>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
                 Nazwa receptury *
               </span>
 
               <input
                 type="text"
-                value={
-                  form.name
-                }
-                onChange={(
-                  event
-                ) =>
+                value={form.name}
+                onChange={(event) =>
                   updateForm(
                     "name",
-                    event.target
-                      .value
+                    event.target.value
                   )
                 }
                 placeholder="np. Biszkopt waniliowy"
-                disabled={
-                  saving
-                }
-                style={
-                  inputStyle
-                }
+                disabled={saving}
+                style={inputStyle}
               />
             </label>
 
-            <label
-              style={
-                labelStyle
-              }
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
                 Kategoria
               </span>
 
               <input
                 type="text"
-                value={
-                  form.category
-                }
-                onChange={(
-                  event
-                ) =>
+                value={form.category}
+                onChange={(event) =>
                   updateForm(
                     "category",
-                    event.target
-                      .value
+                    event.target.value
                   )
                 }
                 placeholder="np. Biszkopty"
-                disabled={
-                  saving
-                }
-                style={
-                  inputStyle
-                }
+                disabled={saving}
+                style={inputStyle}
               />
             </label>
 
-            <label
-              style={
-                labelStyle
-              }
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
                 Opis
               </span>
 
               <textarea
-                value={
-                  form.description
-                }
-                onChange={(
-                  event
-                ) =>
+                value={form.description}
+                onChange={(event) =>
                   updateForm(
                     "description",
-                    event.target
-                      .value
+                    event.target.value
                   )
                 }
                 placeholder="Opcjonalny opis receptury"
-                disabled={
-                  saving
-                }
+                disabled={saving}
                 rows={3}
-                style={
-                  textareaStyle
-                }
+                style={textareaStyle}
               />
             </label>
 
-            <div
-              style={
-                twoColumnStyle
-              }
-            >
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                <span
-                  style={
-                    labelTextStyle
-                  }
-                >
+            <div style={twoColumnStyle}>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
                   Porcje
                 </span>
 
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={
-                    form.portions
-                  }
-                  onChange={(
-                    event
-                  ) =>
+                  value={form.portions}
+                  onChange={(event) =>
                     updateForm(
                       "portions",
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   placeholder="np. 12"
-                  disabled={
-                    saving
-                  }
-                  style={
-                    inputStyle
-                  }
+                  disabled={saving}
+                  style={inputStyle}
                 />
               </label>
 
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                <span
-                  style={
-                    labelTextStyle
-                  }
-                >
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
                   Średnica cm
                 </span>
 
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={
-                    form.diameterCm
-                  }
-                  onChange={(
-                    event
-                  ) =>
+                  value={form.diameterCm}
+                  onChange={(event) =>
                     updateForm(
                       "diameterCm",
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   placeholder="np. 20"
-                  disabled={
-                    saving
-                  }
-                  style={
-                    inputStyle
-                  }
+                  disabled={saving}
+                  style={inputStyle}
                 />
               </label>
             </div>
 
-            <label
-              style={
-                labelStyle
-              }
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
                 Wysokość cm
               </span>
 
               <input
                 type="text"
                 inputMode="decimal"
-                value={
-                  form.heightCm
-                }
-                onChange={(
-                  event
-                ) =>
+                value={form.heightCm}
+                onChange={(event) =>
                   updateForm(
                     "heightCm",
-                    event.target
-                      .value
+                    event.target.value
                   )
                 }
                 placeholder="np. 10"
-                disabled={
-                  saving
-                }
-                style={
-                  inputStyle
-                }
+                disabled={saving}
+                style={inputStyle}
               />
             </label>
 
-            <div
-              style={
-                sectionHeaderStyle
-              }
-            >
+            <div style={sectionHeaderStyle}>
               <div>
-                <h4
-                  style={
-                    sectionTitleStyle
-                  }
-                >
+                <h4 style={sectionTitleStyle}>
                   Składniki receptury
                 </h4>
 
-                <p
-                  style={
-                    sectionSubtitleStyle
-                  }
-                >
-                  Wybierz produkt z
-                  bazy i podaj ilość.
+                <p style={sectionSubtitleStyle}>
+                  Wybierz produkt z bazy i podaj ilość.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={
-                  addIngredient
-                }
+                onClick={addIngredient}
                 disabled={
                   saving ||
-                  products.length ===
-                    0
+                  products.length === 0
                 }
                 style={{
                   ...addIngredientButtonStyle,
                   opacity:
                     saving ||
-                    products.length ===
-                      0
+                    products.length === 0
                       ? 0.5
                       : 1,
                 }}
@@ -1608,53 +1065,28 @@ export default function Recipes() {
               </button>
             </div>
 
-            {products.length ===
-            0 ? (
-              <div
-                style={
-                  warningStyle
-                }
-              >
+            {products.length === 0 ? (
+              <div style={warningStyle}>
                 <strong>
-                  Brak aktywnych
-                  produktów
+                  Brak aktywnych produktów
                 </strong>
 
-                <p
-                  style={
-                    warningTextStyle
-                  }
-                >
-                  Najpierw dodaj
-                  produkty w module
+                <p style={warningTextStyle}>
+                  Najpierw dodaj produkty w module
                   „Produkty”.
                 </p>
               </div>
-            ) : ingredients.length ===
-              0 ? (
-              <div
-                style={
-                  ingredientsEmptyStyle
-                }
-              >
-                Nie dodano jeszcze
-                żadnych składników.
+            ) : ingredients.length === 0 ? (
+              <div style={ingredientsEmptyStyle}>
+                Nie dodano jeszcze żadnych składników.
               </div>
             ) : (
-              <div
-                style={
-                  ingredientsListStyle
-                }
-              >
+              <div style={ingredientsListStyle}>
                 {ingredients.map(
-                  (
-                    ingredient,
-                    index
-                  ) => {
-                    const product =
-                      getProduct(
-                        ingredient.productId
-                      );
+                  (ingredient, index) => {
+                    const product = getProduct(
+                      ingredient.productId
+                    );
 
                     const ingredientCost =
                       getIngredientCost(
@@ -1663,20 +1095,15 @@ export default function Recipes() {
 
                     return (
                       <div
-                        key={
-                          ingredient.id
-                        }
-                        style={
-                          ingredientRowStyle
-                        }
+                        key={ingredient.id}
+                        style={ingredientRowStyle}
                       >
                         <div
                           style={
                             ingredientNumberStyle
                           }
                         >
-                          {index +
-                            1}
+                          {index + 1}
                         </div>
 
                         <div
@@ -1696,43 +1123,27 @@ export default function Recipes() {
                             value={
                               ingredient.productId
                             }
-                            onChange={(
-                              event
-                            ) =>
+                            onChange={(event) =>
                               updateIngredient(
                                 ingredient.id,
                                 "productId",
-                                event
-                                  .target
-                                  .value
+                                event.target.value
                               )
                             }
-                            disabled={
-                              saving
-                            }
-                            style={
-                              inputStyle
-                            }
+                            disabled={saving}
+                            style={inputStyle}
                           >
                             <option value="">
                               Wybierz produkt
                             </option>
 
                             {products.map(
-                              (
-                                item
-                              ) => (
+                              (item) => (
                                 <option
-                                  key={
-                                    item.id
-                                  }
-                                  value={
-                                    item.id
-                                  }
+                                  key={item.id}
+                                  value={item.id}
                                 >
-                                  {
-                                    item.name
-                                  }
+                                  {item.name}
                                 </option>
                               )
                             )}
@@ -1758,24 +1169,16 @@ export default function Recipes() {
                             value={
                               ingredient.quantity
                             }
-                            onChange={(
-                              event
-                            ) =>
+                            onChange={(event) =>
                               updateIngredient(
                                 ingredient.id,
                                 "quantity",
-                                event
-                                  .target
-                                  .value
+                                event.target.value
                               )
                             }
                             placeholder="np. 500"
-                            disabled={
-                              saving
-                            }
-                            style={
-                              inputStyle
-                            }
+                            disabled={saving}
+                            style={inputStyle}
                           />
                         </div>
 
@@ -1830,9 +1233,7 @@ export default function Recipes() {
                               ingredient.id
                             )
                           }
-                          disabled={
-                            saving
-                          }
+                          disabled={saving}
                           style={
                             removeIngredientButtonStyle
                           }
@@ -1846,24 +1247,16 @@ export default function Recipes() {
               </div>
             )}
 
-            <div
-              style={
-                costSummaryStyle
-              }
-            >
+            <div style={costSummaryStyle}>
               <div>
                 <span
-                  style={
-                    costSummaryLabelStyle
-                  }
+                  style={costSummaryLabelStyle}
                 >
                   Koszt produktów
                 </span>
 
                 <strong
-                  style={
-                    costSummaryValueStyle
-                  }
+                  style={costSummaryValueStyle}
                 >
                   {formatMoney(
                     ingredientsCost
@@ -1873,17 +1266,13 @@ export default function Recipes() {
 
               <div>
                 <span
-                  style={
-                    costSummaryLabelStyle
-                  }
+                  style={costSummaryLabelStyle}
                 >
                   Koszty dodatkowe
                 </span>
 
                 <strong
-                  style={
-                    costSummaryValueStyle
-                  }
+                  style={costSummaryValueStyle}
                 >
                   {formatMoney(
                     additionalCosts
@@ -1891,54 +1280,28 @@ export default function Recipes() {
                 </strong>
               </div>
 
-              <div
-                style={
-                  totalCostBoxStyle
-                }
-              >
+              <div style={totalCostBoxStyle}>
                 <span
-                  style={
-                    totalCostLabelStyle
-                  }
+                  style={totalCostLabelStyle}
                 >
                   Łączny koszt receptury
                 </span>
 
                 <strong
-                  style={
-                    totalCostValueStyle
-                  }
+                  style={totalCostValueStyle}
                 >
-                  {formatMoney(
-                    totalCost
-                  )}
+                  {formatMoney(totalCost)}
                 </strong>
               </div>
             </div>
 
-            <div
-              style={
-                additionalCostsHeaderStyle
-              }
-            >
+            <div style={additionalCostsHeaderStyle}>
               Koszty dodatkowe
             </div>
 
-            <div
-              style={
-                twoColumnStyle
-              }
-            >
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                <span
-                  style={
-                    labelTextStyle
-                  }
-                >
+            <div style={twoColumnStyle}>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
                   Koszt pracy
                 </span>
 
@@ -1950,47 +1313,26 @@ export default function Recipes() {
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={
-                      form.laborCost
-                    }
-                    onChange={(
-                      event
-                    ) =>
+                    value={form.laborCost}
+                    onChange={(event) =>
                       updateForm(
                         "laborCost",
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="0,00"
-                    disabled={
-                      saving
-                    }
-                    style={
-                      priceInputStyle
-                    }
+                    disabled={saving}
+                    style={priceInputStyle}
                   />
 
-                  <span
-                    style={
-                      currencyStyle
-                    }
-                  >
+                  <span style={currencyStyle}>
                     zł
                   </span>
                 </div>
               </label>
 
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                <span
-                  style={
-                    labelTextStyle
-                  }
-                >
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
                   Koszt energii
                 </span>
 
@@ -2002,48 +1344,27 @@ export default function Recipes() {
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={
-                      form.energyCost
-                    }
-                    onChange={(
-                      event
-                    ) =>
+                    value={form.energyCost}
+                    onChange={(event) =>
                       updateForm(
                         "energyCost",
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="0,00"
-                    disabled={
-                      saving
-                    }
-                    style={
-                      priceInputStyle
-                    }
+                    disabled={saving}
+                    style={priceInputStyle}
                   />
 
-                  <span
-                    style={
-                      currencyStyle
-                    }
-                  >
+                  <span style={currencyStyle}>
                     zł
                   </span>
                 </div>
               </label>
             </div>
 
-            <label
-              style={
-                labelStyle
-              }
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
                 Koszt opakowania
               </span>
 
@@ -2055,47 +1376,26 @@ export default function Recipes() {
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={
-                    form.packagingCost
-                  }
-                  onChange={(
-                    event
-                  ) =>
+                  value={form.packagingCost}
+                  onChange={(event) =>
                     updateForm(
                       "packagingCost",
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   placeholder="0,00"
-                  disabled={
-                    saving
-                  }
-                  style={
-                    priceInputStyle
-                  }
+                  disabled={saving}
+                  style={priceInputStyle}
                 />
 
-                <span
-                  style={
-                    currencyStyle
-                  }
-                >
+                <span style={currencyStyle}>
                   zł
                 </span>
               </div>
             </label>
 
-            <label
-              style={
-                labelStyle
-              }
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
                 Marża %
               </span>
 
@@ -2107,76 +1407,45 @@ export default function Recipes() {
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={
-                    form.marginPercent
-                  }
-                  onChange={(
-                    event
-                  ) =>
+                  value={form.marginPercent}
+                  onChange={(event) =>
                     updateForm(
                       "marginPercent",
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   placeholder="np. 30"
-                  disabled={
-                    saving
-                  }
-                  style={
-                    priceInputStyle
-                  }
+                  disabled={saving}
+                  style={priceInputStyle}
                 />
 
-                <span
-                  style={
-                    currencyStyle
-                  }
-                >
+                <span style={currencyStyle}>
                   %
                 </span>
               </div>
             </label>
 
-            <div
-              style={
-                salePriceBoxStyle
-              }
-            >
+            <div style={salePriceBoxStyle}>
               <span>
-                Cena po dodaniu
-                marży
+                Cena po dodaniu marży
               </span>
 
               <strong>
-                {formatMoney(
-                  salePrice
-                )}
+                {formatMoney(salePrice)}
               </strong>
             </div>
 
-            <label
-              style={
-                checkboxLabelStyle
-              }
-            >
+            <label style={checkboxLabelStyle}>
               <input
                 type="checkbox"
-                checked={
-                  form.active
-                }
-                onChange={(
-                  event
-                ) =>
+                checked={form.active}
+                onChange={(event) =>
                   updateForm(
                     "active",
-                    event.target
-                      .checked
+                    event.target.checked
                   )
                 }
-                disabled={
-                  saving
-                }
+                disabled={saving}
               />
 
               <span>
@@ -2185,21 +1454,13 @@ export default function Recipes() {
             </label>
 
             {error && (
-              <div
-                style={
-                  errorStyle
-                }
-              >
+              <div style={errorStyle}>
                 {error}
               </div>
             )}
 
             {success && (
-              <div
-                style={
-                  successStyle
-                }
-              >
+              <div style={successStyle}>
                 {success}
               </div>
             )}
@@ -2208,21 +1469,18 @@ export default function Recipes() {
               type="submit"
               disabled={
                 saving ||
-                products.length ===
-                  0
+                products.length === 0
               }
               style={{
                 ...buttonStyle,
                 opacity:
                   saving ||
-                  products.length ===
-                    0
+                  products.length === 0
                     ? 0.6
                     : 1,
                 cursor:
                   saving ||
-                  products.length ===
-                    0
+                  products.length === 0
                     ? "not-allowed"
                     : "pointer",
               }}
@@ -2236,120 +1494,65 @@ export default function Recipes() {
           </form>
         </div>
 
-        <div
-          style={
-            listCardStyle
-          }
-        >
-          <div
-            style={
-              cardHeaderStyle
-            }
-          >
+        <div style={listCardStyle}>
+          <div style={cardHeaderStyle}>
             <div>
-              <h3
-                style={
-                  cardTitleStyle
-                }
-              >
+              <h3 style={cardTitleStyle}>
                 Lista receptur
               </h3>
 
-              <p
-                style={
-                  cardSubtitleStyle
-                }
-              >
-                Receptury zapisane
-                w bazie Supabase.
+              <p style={cardSubtitleStyle}>
+                Receptury zapisane w bazie Supabase.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={
-                loadData
-              }
-              disabled={
-                loading
-              }
-              style={
-                refreshButtonStyle
-              }
+              onClick={loadData}
+              disabled={loading}
+              style={refreshButtonStyle}
             >
               Odśwież
             </button>
           </div>
 
-          <div
-            style={
-              filtersStyle
-            }
-          >
-            <div
-              style={
-                searchWrapperStyle
-              }
-            >
-              <span
-                style={
-                  searchIconStyle
-                }
-              >
+          <div style={filtersStyle}>
+            <div style={searchWrapperStyle}>
+              <span style={searchIconStyle}>
                 🔍
               </span>
 
               <input
                 type="text"
-                value={
-                  search
-                }
-                onChange={(
-                  event
-                ) =>
+                value={search}
+                onChange={(event) =>
                   setSearch(
-                    event.target
-                      .value
+                    event.target.value
                   )
                 }
                 placeholder="Szukaj receptury lub kategorii..."
-                style={
-                  searchInputStyle
-                }
+                style={searchInputStyle}
               />
             </div>
 
             <select
-              value={
-                categoryFilter
-              }
-              onChange={(
-                event
-              ) =>
+              value={categoryFilter}
+              onChange={(event) =>
                 setCategoryFilter(
-                  event.target
-                    .value
+                  event.target.value
                 )
               }
-              style={
-                filterSelectStyle
-              }
+              style={filterSelectStyle}
             >
               <option value="all">
                 Wszystkie kategorie
               </option>
 
               {categories.map(
-                (
-                  category
-                ) => (
+                (category) => (
                   <option
-                    key={
-                      category
-                    }
-                    value={
-                      category
-                    }
+                    key={category}
+                    value={category}
                   >
                     {category}
                   </option>
@@ -2357,19 +1560,13 @@ export default function Recipes() {
               )}
             </select>
 
-            {(search !==
-              "" ||
-              categoryFilter !==
-                "all") && (
+            {(search !== "" ||
+              categoryFilter !== "all") && (
               <button
                 type="button"
                 onClick={() => {
-                  setSearch(
-                    ""
-                  );
-                  setCategoryFilter(
-                    "all"
-                  );
+                  setSearch("");
+                  setCategoryFilter("all");
                 }}
                 style={
                   clearFilterButtonStyle
@@ -2381,49 +1578,28 @@ export default function Recipes() {
           </div>
 
           {!loading &&
-            recipes.length >
-              0 && (
-              <div
-                style={
-                  resultsInfoStyle
-                }
-              >
+            recipes.length > 0 && (
+              <div style={resultsInfoStyle}>
                 Wyświetlono{" "}
                 <strong>
-                  {
-                    filteredRecipes.length
-                  }
+                  {filteredRecipes.length}
                 </strong>{" "}
                 z{" "}
                 <strong>
-                  {
-                    recipes.length
-                  }
+                  {recipes.length}
                 </strong>{" "}
                 receptur
               </div>
             )}
 
           {loading ? (
-            <div
-              style={
-                emptyStyle
-              }
-            >
-              Ładowanie
-              receptur...
+            <div style={emptyStyle}>
+              Ładowanie receptur...
             </div>
-          ) : recipes.length ===
-            0 ? (
-            <div
-              style={
-                emptyStyle
-              }
-            >
+          ) : recipes.length === 0 ? (
+            <div style={emptyStyle}>
               <div
-                style={
-                  emptyIconStyle
-                }
+                style={emptyIconStyle}
               >
                 R
               </div>
@@ -2432,65 +1608,38 @@ export default function Recipes() {
                 Brak receptur
               </strong>
 
-              <p
-                style={
-                  emptyTextStyle
-                }
-              >
-                Dodaj pierwszą
-                recepturę za
+              <p style={emptyTextStyle}>
+                Dodaj pierwszą recepturę za
                 pomocą formularza.
               </p>
             </div>
-          ) : filteredRecipes.length ===
-            0 ? (
-            <div
-              style={
-                emptyStyle
-              }
-            >
+          ) : filteredRecipes.length === 0 ? (
+            <div style={emptyStyle}>
               <div
-                style={
-                  emptyIconStyle
-                }
+                style={emptyIconStyle}
               >
                 ?
               </div>
 
               <strong>
-                Nie znaleziono
-                receptur
+                Nie znaleziono receptur
               </strong>
 
-              <p
-                style={
-                  emptyTextStyle
-                }
-              >
-                Zmień wyszukiwanie
-                lub kategorię.
+              <p style={emptyTextStyle}>
+                Zmień wyszukiwanie lub
+                kategorię.
               </p>
             </div>
           ) : (
-            <div
-              style={
-                recipesListStyle
-              }
-            >
+            <div style={recipesListStyle}>
               {filteredRecipes.map(
                 (recipe) => (
                   <div
-                    key={
-                      recipe.id
-                    }
-                    style={
-                      recipeRowStyle
-                    }
+                    key={recipe.id}
+                    style={recipeRowStyle}
                   >
                     <div
-                      style={
-                        recipeMainStyle
-                      }
+                      style={recipeMainStyle}
                     >
                       <div
                         style={
@@ -2498,9 +1647,7 @@ export default function Recipes() {
                         }
                       >
                         {recipe.name
-                          .charAt(
-                            0
-                          )
+                          .charAt(0)
                           .toUpperCase()}
                       </div>
 
@@ -2510,9 +1657,7 @@ export default function Recipes() {
                             recipeNameStyle
                           }
                         >
-                          {
-                            recipe.name
-                          }
+                          {recipe.name}
                         </div>
 
                         <div
@@ -2570,9 +1715,7 @@ export default function Recipes() {
                             ? `${Number(
                                 recipe.margin_percent
                               )
-                                .toFixed(
-                                  0
-                                )
+                                .toFixed(0)
                                 .replace(
                                   ".",
                                   ","
@@ -2781,8 +1924,7 @@ const textareaStyle = {
 
 const twoColumnStyle = {
   display: "grid",
-  gridTemplateColumns:
-    "1fr 1fr",
+  gridTemplateColumns: "1fr 1fr",
   gap: "12px",
 };
 
@@ -2799,8 +1941,7 @@ const currencyStyle = {
   position: "absolute" as const,
   right: "12px",
   top: "50%",
-  transform:
-    "translateY(-50%)",
+  transform: "translateY(-50%)",
   color: "#8a837d",
   fontSize: "13px",
 };
@@ -2917,8 +2058,7 @@ const smallLabelStyle = {
   display: "block",
   color: "#9a928b",
   fontSize: "9px",
-  textTransform:
-    "uppercase" as const,
+  textTransform: "uppercase" as const,
   letterSpacing: "0.5px",
   marginBottom: "5px",
 };
@@ -3062,8 +2202,7 @@ const searchIconStyle = {
   position: "absolute" as const,
   left: "12px",
   top: "50%",
-  transform:
-    "translateY(-50%)",
+  transform: "translateY(-50%)",
   fontSize: "13px",
   opacity: 0.6,
 };
@@ -3073,8 +2212,7 @@ const searchInputStyle = {
   boxSizing: "border-box" as const,
   border: "1px solid #ddd3c9",
   borderRadius: "9px",
-  padding:
-    "11px 12px 11px 34px",
+  padding: "11px 12px 11px 34px",
   background: "#ffffff",
   color: "#292522",
   fontSize: "13px",
@@ -3101,8 +2239,7 @@ const clearFilterButtonStyle = {
   padding: "0 13px",
   cursor: "pointer",
   fontSize: "12px",
-  whiteSpace:
-    "nowrap" as const,
+  whiteSpace: "nowrap" as const,
 };
 
 const resultsInfoStyle = {
@@ -3221,8 +2358,7 @@ const detailLabelStyle = {
   display: "block",
   color: "#9a928b",
   fontSize: "10px",
-  textTransform:
-    "uppercase" as const,
+  textTransform: "uppercase" as const,
   letterSpacing: "0.6px",
   marginBottom: "4px",
 };
