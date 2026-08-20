@@ -497,6 +497,25 @@ export default function Recipes() {
     setSaving(true);
 
     const recipeData = {
+  name: cleanName,
+  description:
+    form.description.trim() || null,
+  category:
+    form.category.trim() || null,
+  portions,
+  diameter_cm: diameterCm,
+  height_cm: heightCm,
+  active: form.active,
+
+  // Łączny koszt receptury:
+  // produkty + praca + energia + opakowanie
+  cost: Number(totalCost.toFixed(2)),
+
+  labor_cost: laborCost,
+  energy_cost: energyCost,
+  packaging_cost: packagingCost,
+  margin_percent: marginPercent,
+};
       name: cleanName,
       description:
         form.description.trim() || null,
