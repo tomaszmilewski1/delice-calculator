@@ -2606,28 +2606,79 @@ export default function Recipes() {
                   paddingTop: "18px",
                 }}
               >
-                <h3
-                  style={{
-                    marginTop: 0,
-                    color: "#292522",
-                  }}
-                >
-                  {ingredients.length > 0 && (
-  <div
-    style={{
-      marginBottom: "20px",
-      paddingBottom: "15px",
-      borderBottom: "1px solid #eee7e0",
-    }}
-  >
-    <h3
+                <div
+  style={{
+    borderTop: "1px solid #eee7e0",
+    paddingTop: "18px",
+  }}
+>
+  {ingredients.length > 0 && (
+    <div
       style={{
-        margin: "0 0 12px",
-        fontSize: "16px",
-        color: "#292522",
+        marginBottom: "20px",
+        paddingBottom: "15px",
+        borderBottom: "1px solid #eee7e0",
       }}
     >
-      Składniki
+      <h3
+        style={{
+          margin: "0 0 12px",
+          fontSize: "16px",
+          color: "#292522",
+        }}
+      >
+        Składniki
+      </h3>
+
+      {ingredients.map((ingredient) => {
+        const product = products.find(
+          (item) => item.id === ingredient.productId
+        );
+
+        return (
+          <div
+            key={ingredient.id}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "12px",
+              padding: "7px 0",
+              fontSize: "13px",
+            }}
+          >
+            <span>
+              <strong>
+                {product?.name ?? "Nieznany produkt"}
+              </strong>{" "}
+              — {ingredient.quantity} {ingredient.unit}
+            </span>
+
+            <strong>
+              {formatMoney(
+                product
+                  ? calculateIngredientCost(
+                      product,
+                      ingredient.quantity,
+                      ingredient.unit
+                    )
+                  : 0
+              )}
+            </strong>
+          </div>
+        );
+      })}
+    </div>
+  )}
+
+  <h3
+    style={{
+      marginTop: 0,
+      color: "#292522",
+    }}
+  >
+    Koszt receptury
+  </h3>
     </h3>
 
     {ingredients.map((ingredient) => {
