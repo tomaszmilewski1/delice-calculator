@@ -171,10 +171,10 @@ export default function Products() {
     if (
       quantityValue !== null &&
       (!Number.isFinite(quantityValue) ||
-        quantityValue < 0)
+        quantityValue <= 0)
     ) {
       setError(
-        "Ilość w opakowaniu musi być prawidłową liczbą."
+        "Ilość w opakowaniu musi być liczbą większą od zera."
       );
       return;
     }
@@ -330,6 +330,33 @@ export default function Products() {
     return Number(value)
       .toString()
       .replace(".", ",");
+  }
+
+  function getUnitPrice(product: Product) {
+    if (
+      product.package_quantity === null ||
+      product.package_price === null ||
+      product.package_quantity <= 0
+    ) {
+      return null;
+    }
+
+    return (
+      Number(product.package_price) /
+      Number(product.package_quantity)
+    );
+  }
+
+  function getUnitPriceLabel(product: Product) {
+    const unitPrice = getUnitPrice(product);
+
+    if (unitPrice === null) {
+      return "—";
+    }
+
+    return `${unitPrice
+      .toFixed(4)
+      .replace(".", ",")} zł / ${product.unit || "jedn."}`;
   }
 
   const categories = useMemo(() => {
@@ -545,7 +572,7 @@ export default function Products() {
                       event.target.value
                     )
                   }
-                  placeholder="np. 1"
+                  placeholder="np. 500"
                   disabled={saving}
                   style={inputStyle}
                 />
@@ -580,6 +607,30 @@ export default function Products() {
                 </span>
               </div>
             </label>
+
+            {form.packageQuantity &&
+              form.packagePrice &&
+              form.unit && (
+                <div style={formUnitPriceStyle}>
+                  <span style={formUnitPriceLabelStyle}>
+                    Cena za 1 {form.unit}
+                  </span>
+
+                  <strong style={formUnitPriceValueStyle}>
+                    {(
+                      Number(
+                        form.packagePrice.replace(",", ".")
+                      ) /
+                      Number(
+                        form.packageQuantity.replace(",", ".")
+                      )
+                    )
+                      .toFixed(4)
+                      .replace(".", ",")}{" "}
+                    zł
+                  </strong>
+                </div>
+              )}
 
             <label style={labelStyle}>
               <span style={labelTextStyle}>
@@ -832,6 +883,16 @@ export default function Products() {
 
                     <div>
                       <span style={detailLabelStyle}>
+                        Cena / jednostkę
+                      </span>
+
+                      <strong>
+                        {getUnitPriceLabel(product)}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span style={detailLabelStyle}>
                         Status
                       </span>
 
@@ -1020,6 +1081,29 @@ const currencyStyle = {
   transform: "translateY(-50%)",
   color: "#8a837d",
   fontSize: "13px",
+};
+
+const formUnitPriceStyle = {
+  background: "#f7f3ef",
+  border: "1px solid #e6d9cd",
+  borderRadius: "10px",
+  padding: "11px 13px",
+  marginTop: "-4px",
+  marginBottom: "16px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "10px",
+};
+
+const formUnitPriceLabelStyle = {
+  color: "#716b65",
+  fontSize: "12px",
+};
+
+const formUnitPriceValueStyle = {
+  color: "#8a6d4b",
+  fontSize: "14px",
 };
 
 const textareaStyle = {
