@@ -84,6 +84,8 @@ export default function Recipes() {
   const [products, setProducts] = useState<Product[]>([]);
   const [ingredients, setIngredients] =
     useState<IngredientRow[]>([]);
+  const [previewIngredients, setPreviewIngredients] =
+  useState<IngredientRow[]>([]);
 
     const [previewRecipe, setPreviewRecipe] =
     useState<Recipe | null>(null);
@@ -477,9 +479,59 @@ export default function Recipes() {
       setError(
         `Nie udało się pobrać składników: ${ingredientsError.message}`
       );
-
       return;
     }
+
+    const rows =
+      (data ?? []) as RecipeIngredient[];
+
+    setIngredients(
+      rows.map((ingredient) => ({
+        id: ingredient.id,
+        productId: ingredient.product_id,
+        quantity: String(
+          ingredient.quantity
+        ).replace(".", ","),
+        unit: ingredient.unit ?? "",
+      }))
+    );
+  }
+async function loadPreviewIngredients(
+  recipeId: string
+) {
+  const {
+    data,
+    error: ingredientsError,
+  } = await supabase
+    .from("recipe_ingredients")
+    .select("*")
+    .eq("recipe_id", recipeId)
+    .order("created_at", {
+      ascending: true,
+    });
+
+  if (ingredientsError) {
+    setError(
+      `Nie udało się pobrać składników: ${ingredientsError.message}`
+    );
+    return;
+  }
+
+  const rows =
+    (data ?? []) as RecipeIngredient[];
+
+  setPreviewIngredients(
+    rows.map((ingredient) => ({
+      id: ingredient.id,
+      productId: ingredient.product_id,
+      quantity: String(
+        ingredient.quantity
+      ).replace(".", ","),
+      unit: ingredient.unit ?? "",
+    }))
+  );
+}
+    
 
     const rows =
       (data ?? []) as RecipeIngredient[];
@@ -3145,19 +3197,22 @@ export default function Recipes() {
                       </button>
 
                                             <button
-                        type="button"
-                        onClick={() =>
-                          setPreviewRecipe(recipe)
-                        }
-                        style={{
-                          ...editButtonStyle,
-                          background: "#f5f1eb",
-                          color: "#6b5138",
-                          border: "1px solid #ddd0c1",
-                        }}
-                      >
-                        Podgląd
-                      </button>
+  type="button"
+  onClick={async () => {
+    setError("");
+    setPreviewIngredients([]);
+    setPreviewRecipe(recipe);
+    await loadPreviewIngredients(recipe.id);
+  }}
+  style={{
+    ...editButtonStyle,
+    background: "#f5f1eb",
+    color: "#6b5138",
+    border: "1px solid #ddd0c1",
+  }}
+>
+  Podgląd
+</button>
 
                       <button
                         type="button"
