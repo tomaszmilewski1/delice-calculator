@@ -6,145 +6,69 @@ import { supabase } from "../lib/supabase";
 type Recipe = {
   id: string;
   name: string;
-  description: string | null;
   category: string | null;
-  portions: number | null;
-  diameter_cm: number | null;
-  height_cm: number | null;
+  description: string | null;
+  servings: number | null;
+  notes: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
 };
 
-type Product = {
-  id: string;
-  name: string;
-  category: string | null;
-  unit: string;
-  package_quantity: number;
-  package_price: number;
-  active: boolean;
-};
-
-type RecipeIngredient = {
-  id: string;
-  recipe_id: string;
-  product_id: string;
-  quantity: number;
-  unit: string;
-};
-
 type RecipeForm = {
   name: string;
-  description: string;
   category: string;
-  portions: string;
-  diameterCm: string;
-  heightCm: string;
+  description: string;
+  servings: string;
+  notes: string;
   active: boolean;
-};
-
-type IngredientForm = {
-  productId: string;
-  quantity: string;
-  unit: string;
 };
 
 const emptyForm: RecipeForm = {
   name: "",
-  description: "",
   category: "",
-  portions: "",
-  diameterCm: "",
-  heightCm: "",
+  description: "",
+  servings: "",
+  notes: "",
   active: true,
-};
-
-const emptyIngredientForm: IngredientForm = {
-  productId: "",
-  quantity: "",
-  unit: "",
 };
 
 export default function Recipes() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingIngredient, setSavingIngredient] = useState(false);
 
   const [form, setForm] = useState<RecipeForm>(emptyForm);
-  const [ingredientForm, setIngredientForm] =
-    useState<IngredientForm>(emptyIngredientForm);
-
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedRecipeId, setSelectedRecipeId] =
-    useState<string | null>(null);
 
-  const [editingIngredientId, setEditingIngredientId] =
-    useState<string | null>(null);
-
-  const [editingIngredientQuantity, setEditingIngredientQuantity] =
-    useState("");
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    loadData();
+    loadRecipes();
   }, []);
 
-  async function loadData() {
+  async function loadRecipes() {
     setLoading(true);
     setError("");
 
-    const [
-      recipesResult,
-      productsResult,
-      ingredientsResult,
-    ] = await Promise.all([
-      supabase
-        .from("recipes")
-        .select("*")
-        .order("name", { ascending: true }),
+    const { data, error: recipesError } = await supabase
+      .from("recipes")
+      .select("*")
+      .order("name", { ascending: true });
 
-      supabase
-        .from("products")
-        .select("*")
-        .order("name", { ascending: true }),
-
-      supabase
-        .from("recipe_ingredients")
-        .select("*")
-        .order("created_at", { ascending: true }),
-    ]);
-
-    if (recipesResult.error) {
+    if (recipesError) {
       setError(
-        `Nie udało się pobrać receptur: ${recipesResult.error.message}`
+        `Nie udało się pobrać receptur: ${recipesError.message}`
       );
+      setLoading(false);
+      return;
     }
 
-    if (productsResult.error) {
-      setError(
-        `Nie udało się pobrać produktów: ${productsResult.error.message}`
-      );
-    }
-
-    if (ingredientsResult.error) {
-      setError(
-        `Nie udało się pobrać składników: ${ingredientsResult.error.message}`
-      );
-    }
-
-    setRecipes((recipesResult.data ?? []) as Recipe[]);
-    setProducts((productsResult.data ?? []) as Product[]);
-    setIngredients(
-      (ingredientsResult.data ?? []) as RecipeIngredient[]
-    );
-
+    setRecipes((data ?? []) as Recipe[]);
     setLoading(false);
   }
 
@@ -158,57 +82,21 @@ export default function Recipes() {
     }));
   }
 
-  function updateIngredientForm(
-    field: keyof IngredientForm,
-    value: string
-  ) {
-    setIngredientForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
-
-  function handleProductChange(productId: string) {
-    const product = products.find(
-      (item) => item.id === productId
-    );
-
-    setIngredientForm((current) => ({
-      ...current,
-      productId,
-      unit: product?.unit ?? "",
-    }));
-  }
-
-  function fillRecipeForm(recipe: Recipe) {
-    setForm({
-      name: recipe.name ?? "",
-      description: recipe.description ?? "",
-      category: recipe.category ?? "",
-      portions:
-        recipe.portions !== null
-          ? String(recipe.portions).replace(".", ",")
-          : "",
-      diameterCm:
-        recipe.diameter_cm !== null
-          ? String(recipe.diameter_cm).replace(".", ",")
-          : "",
-      heightCm:
-        recipe.height_cm !== null
-          ? String(recipe.height_cm).replace(".", ",")
-          : "",
-      active: recipe.active,
-    });
-  }
-
   function startEditing(recipe: Recipe) {
     setEditingId(recipe.id);
-    setSelectedRecipeId(recipe.id);
-    setEditingIngredientId(null);
 
-    fillRecipeForm(recipe);
+    setForm({
+      name: recipe.name ?? "",
+      category: recipe.category ?? "",
+      description: recipe.description ?? "",
+      servings:
+        recipe.servings !== null
+          ? String(recipe.servings).replace(".", ",")
+          : "",
+      notes: recipe.notes ?? "",
+      active: recipe.active,
+    });
 
-    setIngredientForm(emptyIngredientForm);
     setError("");
     setSuccess("");
 
@@ -218,26 +106,14 @@ export default function Recipes() {
     });
   }
 
-  function startNewRecipe() {
+  function cancelEditing() {
     setEditingId(null);
-    setSelectedRecipeId(null);
-    setEditingIngredientId(null);
-    setEditingIngredientQuantity("");
-
     setForm(emptyForm);
-    setIngredientForm(emptyIngredientForm);
-
     setError("");
     setSuccess("");
   }
 
-  function cancelEditing() {
-    startNewRecipe();
-  }
-
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
-  ) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setError("");
@@ -250,55 +126,27 @@ export default function Recipes() {
       return;
     }
 
-    const portionsValue =
-      form.portions.trim() === ""
+    const servingsValue =
+      form.servings.trim() === ""
         ? null
-        : Number(form.portions.replace(",", "."));
-
-    const diameterValue =
-      form.diameterCm.trim() === ""
-        ? null
-        : Number(form.diameterCm.replace(",", "."));
-
-    const heightValue =
-      form.heightCm.trim() === ""
-        ? null
-        : Number(form.heightCm.replace(",", "."));
+        : Number(form.servings.replace(",", "."));
 
     if (
-      portionsValue !== null &&
-      (!Number.isFinite(portionsValue) ||
-        portionsValue <= 0)
+      servingsValue !== null &&
+      (!Number.isFinite(servingsValue) || servingsValue <= 0)
     ) {
-      setError("Liczba porcji musi być większa od 0.");
-      return;
-    }
-
-    if (
-      diameterValue !== null &&
-      (!Number.isFinite(diameterValue) ||
-        diameterValue <= 0)
-    ) {
-      setError("Średnica musi być większa od 0.");
-      return;
-    }
-
-    if (
-      heightValue !== null &&
-      (!Number.isFinite(heightValue) ||
-        heightValue <= 0)
-    ) {
-      setError("Wysokość musi być większa od 0.");
+      setError(
+        "Liczba porcji musi być liczbą większą od zera."
+      );
       return;
     }
 
     const recipeData = {
       name: cleanName,
-      description: form.description.trim() || null,
       category: form.category.trim() || null,
-      portions: portionsValue,
-      diameter_cm: diameterValue,
-      height_cm: heightValue,
+      description: form.description.trim() || null,
+      servings: servingsValue,
+      notes: form.notes.trim() || null,
       active: form.active,
     };
 
@@ -318,14 +166,11 @@ export default function Recipes() {
         return;
       }
 
-      setSelectedRecipeId(editingId);
       setSuccess("Receptura została zaktualizowana.");
     } else {
-      const { data, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from("recipes")
-        .insert(recipeData)
-        .select("*")
-        .single();
+        .insert(recipeData);
 
       if (insertError) {
         setError(
@@ -335,163 +180,20 @@ export default function Recipes() {
         return;
       }
 
-      setEditingId(data.id);
-      setSelectedRecipeId(data.id);
-
-      setSuccess(
-        "Receptura została dodana. Możesz teraz dodać składniki."
-      );
+      setSuccess("Receptura została dodana.");
     }
 
-    await loadData();
+    setForm(emptyForm);
+    setEditingId(null);
+
+    await loadRecipes();
 
     setSaving(false);
   }
 
-  async function addIngredient(
-    event: FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
-    if (!selectedRecipeId) {
-      setError("Najpierw wybierz lub zapisz recepturę.");
-      return;
-    }
-
-    setError("");
-    setSuccess("");
-
-    if (!ingredientForm.productId) {
-      setError("Wybierz produkt.");
-      return;
-    }
-
-    const quantity = Number(
-      ingredientForm.quantity.replace(",", ".")
-    );
-
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      setError("Podaj prawidłową ilość składnika.");
-      return;
-    }
-
-    const product = products.find(
-      (item) => item.id === ingredientForm.productId
-    );
-
-    if (!product) {
-      setError("Nie znaleziono wybranego produktu.");
-      return;
-    }
-
-    const alreadyExists = ingredients.some(
-      (ingredient) =>
-        ingredient.recipe_id === selectedRecipeId &&
-        ingredient.product_id === product.id
-    );
-
-    if (alreadyExists) {
-      setError(
-        "Ten produkt znajduje się już w tej recepturze. Zamiast dodawać go ponownie, edytuj jego ilość poniżej."
-      );
-      return;
-    }
-
-    setSavingIngredient(true);
-
-    const { error: insertError } = await supabase
-      .from("recipe_ingredients")
-      .insert({
-        recipe_id: selectedRecipeId,
-        product_id: product.id,
-        quantity,
-        unit: product.unit,
-      });
-
-    if (insertError) {
-      setError(
-        `Nie udało się dodać składnika: ${insertError.message}`
-      );
-      setSavingIngredient(false);
-      return;
-    }
-
-    setIngredientForm(emptyIngredientForm);
-
-    setSuccess(`Dodano składnik: ${product.name}.`);
-
-    await loadData();
-
-    setSavingIngredient(false);
-  }
-
-  function startEditingIngredient(
-    ingredient: RecipeIngredient
-  ) {
-    setEditingIngredientId(ingredient.id);
-    setEditingIngredientQuantity(
-      String(ingredient.quantity).replace(".", ",")
-    );
-    setError("");
-    setSuccess("");
-  }
-
-  function cancelEditingIngredient() {
-    setEditingIngredientId(null);
-    setEditingIngredientQuantity("");
-  }
-
-  async function saveIngredientQuantity(
-    ingredient: RecipeIngredient
-  ) {
-    const quantity = Number(
-      editingIngredientQuantity.replace(",", ".")
-    );
-
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      setError("Podaj prawidłową ilość składnika.");
-      return;
-    }
-
-    setError("");
-    setSuccess("");
-
-    const product = getProduct(ingredient.product_id);
-
-    const { error: updateError } = await supabase
-      .from("recipe_ingredients")
-      .update({
-        quantity,
-        unit: product?.unit ?? ingredient.unit,
-      })
-      .eq("id", ingredient.id);
-
-    if (updateError) {
-      setError(
-        `Nie udało się zmienić ilości składnika: ${updateError.message}`
-      );
-      return;
-    }
-
-    setEditingIngredientId(null);
-    setEditingIngredientQuantity("");
-
-    setSuccess("Ilość składnika została zmieniona.");
-
-    await loadData();
-  }
-
-  async function deleteIngredient(
-    ingredient: RecipeIngredient
-  ) {
-    const product = products.find(
-      (item) => item.id === ingredient.product_id
-    );
-
+  async function deleteRecipe(recipe: Recipe) {
     const confirmed = window.confirm(
-      `Czy usunąć składnik "${
-        product?.name ?? "produkt"
-      }" z receptury?`
+      `Czy na pewno chcesz usunąć recepturę "${recipe.name}"?\n\nTej operacji nie można cofnąć.`
     );
 
     if (!confirmed) {
@@ -502,69 +204,26 @@ export default function Recipes() {
     setSuccess("");
 
     const { error: deleteError } = await supabase
-      .from("recipe_ingredients")
+      .from("recipes")
       .delete()
-      .eq("id", ingredient.id);
+      .eq("id", recipe.id);
 
     if (deleteError) {
       setError(
-        `Nie udało się usunąć składnika: ${deleteError.message}`
+        `Nie udało się usunąć receptury: ${deleteError.message}`
       );
       return;
     }
 
-    setSuccess("Składnik został usunięty.");
-
-    await loadData();
-  }
-
-  async function deleteRecipe(recipe: Recipe) {
-    const confirmed = window.confirm(
-      `Czy na pewno chcesz usunąć recepturę "${recipe.name}"?\n\nZostaną również usunięte jej składniki.`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setError("");
-    setSuccess("");
-
-    const { error: deleteIngredientsError } =
-      await supabase
-        .from("recipe_ingredients")
-        .delete()
-        .eq("recipe_id", recipe.id);
-
-    if (deleteIngredientsError) {
-      setError(
-        `Nie udało się usunąć składników receptury: ${deleteIngredientsError.message}`
-      );
-      return;
-    }
-
-    const { error: deleteRecipeError } =
-      await supabase
-        .from("recipes")
-        .delete()
-        .eq("id", recipe.id);
-
-    if (deleteRecipeError) {
-      setError(
-        `Nie udało się usunąć receptury: ${deleteRecipeError.message}`
-      );
-      return;
-    }
-
-    if (selectedRecipeId === recipe.id) {
-      startNewRecipe();
+    if (editingId === recipe.id) {
+      cancelEditing();
     }
 
     setSuccess(
       `Receptura "${recipe.name}" została usunięta.`
     );
 
-    await loadData();
+    await loadRecipes();
   }
 
   async function toggleActive(recipe: Recipe) {
@@ -603,174 +262,8 @@ export default function Recipes() {
     );
   }
 
-  function selectRecipe(recipe: Recipe) {
-    setSelectedRecipeId(recipe.id);
-    setEditingId(recipe.id);
-    setEditingIngredientId(null);
-
-    fillRecipeForm(recipe);
-
-    setIngredientForm(emptyIngredientForm);
-    setError("");
-    setSuccess("");
-  }
-
-  function getProduct(productId: string) {
-    return products.find(
-      (product) => product.id === productId
-    );
-  }
-
-  function normalizeUnit(
-    unit: string | null | undefined
-  ) {
-    return (unit ?? "")
-      .trim()
-      .toLowerCase()
-      .replace(/\s/g, "")
-      .replace(".", "");
-  }
-
-  function convertQuantity(
-    quantity: number,
-    fromUnit: string,
-    toUnit: string
-  ) {
-    const from = normalizeUnit(fromUnit);
-    const to = normalizeUnit(toUnit);
-
-    if (from === to) {
-      return quantity;
-    }
-
-    if (from === "kg" && to === "g") {
-      return quantity * 1000;
-    }
-
-    if (from === "g" && to === "kg") {
-      return quantity / 1000;
-    }
-
-    if (from === "l" && to === "ml") {
-      return quantity * 1000;
-    }
-
-    if (from === "ml" && to === "l") {
-      return quantity / 1000;
-    }
-
-    if (
-      ["szt", "sztuki"].includes(from) &&
-      ["szt", "sztuki"].includes(to)
-    ) {
-      return quantity;
-    }
-
-    return quantity;
-  }
-
-  function calculateIngredientCost(
-    ingredient: RecipeIngredient
-  ) {
-    const product = getProduct(
-      ingredient.product_id
-    );
-
-    if (!product) {
-      return 0;
-    }
-
-    const packageQuantity = Number(
-      product.package_quantity
-    );
-
-    const packagePrice = Number(
-      product.package_price
-    );
-
-    const ingredientQuantity = Number(
-      ingredient.quantity
-    );
-
-    if (
-      !Number.isFinite(packageQuantity) ||
-      packageQuantity <= 0 ||
-      !Number.isFinite(packagePrice) ||
-      packagePrice < 0 ||
-      !Number.isFinite(ingredientQuantity) ||
-      ingredientQuantity <= 0
-    ) {
-      return 0;
-    }
-
-    const convertedQuantity = convertQuantity(
-      ingredientQuantity,
-      ingredient.unit,
-      product.unit
-    );
-
-    return (
-      (convertedQuantity / packageQuantity) *
-      packagePrice
-    );
-  }
-
-  function calculateRecipeCost(recipeId: string) {
-    return ingredients
-      .filter(
-        (ingredient) =>
-          ingredient.recipe_id === recipeId
-      )
-      .reduce(
-        (sum, ingredient) =>
-          sum +
-          calculateIngredientCost(ingredient),
-        0
-      );
-  }
-
-  const selectedRecipe = useMemo(
-    () =>
-      recipes.find(
-        (recipe) =>
-          recipe.id === selectedRecipeId
-      ) ?? null,
-    [recipes, selectedRecipeId]
-  );
-
-  const selectedIngredients = useMemo(
-    () =>
-      ingredients.filter(
-        (ingredient) =>
-          ingredient.recipe_id ===
-          selectedRecipeId
-      ),
-    [ingredients, selectedRecipeId]
-  );
-
-  const selectedRecipeCost = selectedRecipe
-    ? calculateRecipeCost(selectedRecipe.id)
-    : 0;
-
-  const selectedRecipePortions =
-    selectedRecipe?.portions &&
-    selectedRecipe.portions > 0
-      ? selectedRecipe.portions
-      : null;
-
-  const selectedRecipeCostPerPortion =
-    selectedRecipePortions
-      ? selectedRecipeCost /
-        selectedRecipePortions
-      : null;
-
-  function formatNumber(
-    value: number | null | undefined
-  ) {
-    if (
-      value === null ||
-      value === undefined
-    ) {
+  function formatServings(value: number | null) {
+    if (value === null || value === undefined) {
       return "—";
     }
 
@@ -779,28 +272,44 @@ export default function Recipes() {
       .replace(".", ",");
   }
 
-  function formatMoney(value: number) {
-    return `${value
-      .toFixed(2)
-      .replace(".", ",")} zł`;
-  }
+  const categories = useMemo(() => {
+    const uniqueCategories = recipes
+      .map((recipe) => recipe.category?.trim())
+      .filter(
+        (category): category is string =>
+          Boolean(category)
+      );
 
-  function getRecipePortionsLabel(
-    portions: number | null
-  ) {
-    if (portions === null) {
-      return "Brak danych o porcjach";
-    }
+    return Array.from(new Set(uniqueCategories)).sort(
+      (a, b) => a.localeCompare(b, "pl")
+    );
+  }, [recipes]);
 
-    return `${formatNumber(portions)} ${
-      portions === 1
-        ? "porcja"
-        : portions >= 2 &&
-          portions <= 4
-        ? "porcje"
-        : "porcji"
-    }`;
-  }
+  const filteredRecipes = useMemo(() => {
+    const cleanSearch = search
+      .trim()
+      .toLocaleLowerCase("pl");
+
+    return recipes.filter((recipe) => {
+      const matchesSearch =
+        cleanSearch === "" ||
+        recipe.name
+          .toLocaleLowerCase("pl")
+          .includes(cleanSearch) ||
+        (recipe.category ?? "")
+          .toLocaleLowerCase("pl")
+          .includes(cleanSearch) ||
+        (recipe.description ?? "")
+          .toLocaleLowerCase("pl")
+          .includes(cleanSearch);
+
+      const matchesCategory =
+        categoryFilter === "all" ||
+        recipe.category === categoryFilter;
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [recipes, search, categoryFilter]);
 
   return (
     <section style={pageStyle}>
@@ -815,8 +324,8 @@ export default function Recipes() {
           </h2>
 
           <p style={subtitleStyle}>
-            Twórz receptury, wybieraj produkty
-            z bazy i automatycznie wyliczaj koszt.
+            Twórz receptury, zarządzaj nimi i przygotuj
+            bazę do automatycznego wyliczania kosztów tortów.
           </p>
         </div>
 
@@ -824,656 +333,184 @@ export default function Recipes() {
           {recipes.length}{" "}
           {recipes.length === 1
             ? "receptura"
-            : recipes.length >= 2 &&
-              recipes.length <= 4
+            : recipes.length >= 2 && recipes.length <= 4
             ? "receptury"
             : "receptur"}
         </div>
       </div>
 
       <div style={contentGridStyle}>
-        <div>
-          <div style={formCardStyle}>
-            <div style={cardHeaderStyle}>
-              <div>
-                <h3 style={cardTitleStyle}>
-                  {editingId
-                    ? "Edytuj recepturę"
-                    : "Dodaj recepturę"}
-                </h3>
+        <div style={formCardStyle}>
+          <div style={cardHeaderStyle}>
+            <div>
+              <h3 style={cardTitleStyle}>
+                {editingId
+                  ? "Edytuj recepturę"
+                  : "Dodaj recepturę"}
+              </h3>
 
-                <p style={cardSubtitleStyle}>
-                  {editingId
-                    ? "Zmień dane receptury i zapisz zmiany."
-                    : "Najpierw utwórz recepturę, a następnie dodaj jej składniki."}
-                </p>
-              </div>
-
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={cancelEditing}
-                  style={cancelButtonStyle}
-                >
-                  Anuluj
-                </button>
-              )}
+              <p style={cardSubtitleStyle}>
+                {editingId
+                  ? "Zmień dane receptury i zapisz zmiany."
+                  : "Receptura zostanie zapisana w bazie Supabase."}
+              </p>
             </div>
 
-            <form onSubmit={handleSubmit}>
-              <label style={labelStyle}>
-                <span style={labelTextStyle}>
-                  Nazwa receptury *
-                </span>
-
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(event) =>
-                    updateForm(
-                      "name",
-                      event.target.value
-                    )
-                  }
-                  placeholder="np. Krem śmietankowy"
-                  disabled={saving}
-                  style={inputStyle}
-                />
-              </label>
-
-              <label style={labelStyle}>
-                <span style={labelTextStyle}>
-                  Kategoria
-                </span>
-
-                <input
-                  type="text"
-                  value={form.category}
-                  onChange={(event) =>
-                    updateForm(
-                      "category",
-                      event.target.value
-                    )
-                  }
-                  placeholder="np. Kremy"
-                  disabled={saving}
-                  style={inputStyle}
-                />
-              </label>
-
-              <label style={labelStyle}>
-                <span style={labelTextStyle}>
-                  Opis
-                </span>
-
-                <textarea
-                  value={form.description}
-                  onChange={(event) =>
-                    updateForm(
-                      "description",
-                      event.target.value
-                    )
-                  }
-                  placeholder="Krótki opis receptury"
-                  disabled={saving}
-                  rows={3}
-                  style={textareaStyle}
-                />
-              </label>
-
-              <div style={threeColumnStyle}>
-                <label style={labelStyle}>
-                  <span style={labelTextStyle}>
-                    Porcje
-                  </span>
-
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={form.portions}
-                    onChange={(event) =>
-                      updateForm(
-                        "portions",
-                        event.target.value
-                      )
-                    }
-                    placeholder="np. 12"
-                    disabled={saving}
-                    style={inputStyle}
-                  />
-                </label>
-
-                <label style={labelStyle}>
-                  <span style={labelTextStyle}>
-                    Średnica cm
-                  </span>
-
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={form.diameterCm}
-                    onChange={(event) =>
-                      updateForm(
-                        "diameterCm",
-                        event.target.value
-                      )
-                    }
-                    placeholder="np. 20"
-                    disabled={saving}
-                    style={inputStyle}
-                  />
-                </label>
-
-                <label style={labelStyle}>
-                  <span style={labelTextStyle}>
-                    Wysokość cm
-                  </span>
-
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={form.heightCm}
-                    onChange={(event) =>
-                      updateForm(
-                        "heightCm",
-                        event.target.value
-                      )
-                    }
-                    placeholder="np. 10"
-                    disabled={saving}
-                    style={inputStyle}
-                  />
-                </label>
-              </div>
-
-              <label style={checkboxLabelStyle}>
-                <input
-                  type="checkbox"
-                  checked={form.active}
-                  onChange={(event) =>
-                    updateForm(
-                      "active",
-                      event.target.checked
-                    )
-                  }
-                  disabled={saving}
-                />
-
-                <span>
-                  Receptura aktywna
-                </span>
-              </label>
-
-              {error && (
-                <div style={errorStyle}>
-                  {error}
-                </div>
-              )}
-
-              {success && (
-                <div style={successStyle}>
-                  {success}
-                </div>
-              )}
-
+            {editingId && (
               <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  ...buttonStyle,
-                  opacity: saving ? 0.7 : 1,
-                  cursor: saving
-                    ? "not-allowed"
-                    : "pointer",
-                }}
+                type="button"
+                onClick={cancelEditing}
+                style={cancelButtonStyle}
               >
-                {saving
-                  ? "Zapisywanie..."
-                  : editingId
-                  ? "Zapisz zmiany"
-                  : "+ Dodaj recepturę"}
+                Anuluj
               </button>
-            </form>
+            )}
           </div>
 
-          {selectedRecipe && (
-            <div style={ingredientsCardStyle}>
-              <div style={cardHeaderStyle}>
-                <div>
-                  <h3 style={cardTitleStyle}>
-                    Składniki receptury
-                  </h3>
+          <form onSubmit={handleSubmit}>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Nazwa receptury *
+              </span>
 
-                  <p style={cardSubtitleStyle}>
-                    {selectedRecipe.name}
-                  </p>
-                </div>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(event) =>
+                  updateForm("name", event.target.value)
+                }
+                placeholder="np. Biszkopt waniliowy"
+                disabled={saving}
+                style={inputStyle}
+              />
+            </label>
 
-                <div style={costSummaryStyle}>
-                  <div>
-                    <span style={costSmallLabelStyle}>
-                      Koszt receptury
-                    </span>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Kategoria
+              </span>
 
-                    <strong style={costBigValueStyle}>
-                      {formatMoney(
-                        selectedRecipeCost
-                      )}
-                    </strong>
-                  </div>
+              <input
+                type="text"
+                value={form.category}
+                onChange={(event) =>
+                  updateForm(
+                    "category",
+                    event.target.value
+                  )
+                }
+                placeholder="np. Biszkopty"
+                disabled={saving}
+                style={inputStyle}
+              />
+            </label>
 
-                  <div style={costDividerStyle} />
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Liczba porcji
+              </span>
 
-                  <div>
-                    <span style={costSmallLabelStyle}>
-                      Koszt 1 porcji
-                    </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.servings}
+                onChange={(event) =>
+                  updateForm(
+                    "servings",
+                    event.target.value
+                  )
+                }
+                placeholder="np. 10"
+                disabled={saving}
+                style={inputStyle}
+              />
+            </label>
 
-                    <strong style={costPerPortionStyle}>
-                      {selectedRecipeCostPerPortion !==
-                      null
-                        ? formatMoney(
-                            selectedRecipeCostPerPortion
-                          )
-                        : "—"}
-                    </strong>
-                  </div>
-                </div>
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Opis
+              </span>
+
+              <textarea
+                value={form.description}
+                onChange={(event) =>
+                  updateForm(
+                    "description",
+                    event.target.value
+                  )
+                }
+                placeholder="Krótki opis receptury"
+                disabled={saving}
+                rows={3}
+                style={textareaStyle}
+              />
+            </label>
+
+            <label style={labelStyle}>
+              <span style={labelTextStyle}>
+                Uwagi
+              </span>
+
+              <textarea
+                value={form.notes}
+                onChange={(event) =>
+                  updateForm("notes", event.target.value)
+                }
+                placeholder="Opcjonalne informacje"
+                disabled={saving}
+                rows={3}
+                style={textareaStyle}
+              />
+            </label>
+
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(event) =>
+                  updateForm(
+                    "active",
+                    event.target.checked
+                  )
+                }
+                disabled={saving}
+              />
+
+              <span>
+                Receptura aktywna
+              </span>
+            </label>
+
+            {error && (
+              <div style={errorStyle}>
+                {error}
               </div>
+            )}
 
-              <form
-                onSubmit={addIngredient}
-                style={ingredientFormStyle}
-              >
-                <div style={ingredientProductFieldStyle}>
-                  <label style={labelStyle}>
-                    <span style={labelTextStyle}>
-                      Produkt
-                    </span>
-
-                    <select
-                      value={
-                        ingredientForm.productId
-                      }
-                      onChange={(event) =>
-                        handleProductChange(
-                          event.target.value
-                        )
-                      }
-                      disabled={
-                        savingIngredient ||
-                        products.length === 0
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="">
-                        Wybierz produkt z bazy...
-                      </option>
-
-                      {products
-                        .filter(
-                          (product) =>
-                            product.active
-                        )
-                        .map((product) => (
-                          <option
-                            key={product.id}
-                            value={product.id}
-                          >
-                            {product.name} —{" "}
-                            {formatMoney(
-                              Number(
-                                product.package_price
-                              )
-                            )}{" "}
-                            /{" "}
-                            {formatNumber(
-                              product.package_quantity
-                            )}{" "}
-                            {product.unit}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div style={ingredientQuantityFieldStyle}>
-                  <label style={labelStyle}>
-                    <span style={labelTextStyle}>
-                      Ilość
-                    </span>
-
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={
-                        ingredientForm.quantity
-                      }
-                      onChange={(event) =>
-                        updateIngredientForm(
-                          "quantity",
-                          event.target.value
-                        )
-                      }
-                      placeholder="np. 500"
-                      disabled={savingIngredient}
-                      style={inputStyle}
-                    />
-                  </label>
-                </div>
-
-                <div style={ingredientUnitFieldStyle}>
-                  <label style={labelStyle}>
-                    <span style={labelTextStyle}>
-                      Jednostka
-                    </span>
-
-                    <input
-                      type="text"
-                      value={ingredientForm.unit}
-                      readOnly
-                      placeholder="Automatycznie"
-                      disabled={savingIngredient}
-                      style={{
-                        ...inputStyle,
-                        background: "#f7f4f1",
-                        color: "#716b65",
-                        cursor: "not-allowed",
-                      }}
-                    />
-                  </label>
-                </div>
-
-                <div style={ingredientButtonFieldStyle}>
-                  <button
-                    type="submit"
-                    disabled={savingIngredient}
-                    style={{
-                      ...smallButtonStyle,
-                      opacity:
-                        savingIngredient
-                          ? 0.7
-                          : 1,
-                    }}
-                  >
-                    {savingIngredient
-                      ? "Dodawanie..."
-                      : "+ Dodaj"}
-                  </button>
-                </div>
-              </form>
-
-              {selectedIngredients.length === 0 ? (
-                <div style={emptyIngredientsStyle}>
-                  Brak składników. Wybierz produkt z
-                  bazy powyżej i dodaj jego ilość.
-                </div>
-              ) : (
-                <div style={ingredientsListStyle}>
-                  {selectedIngredients.map(
-                    (ingredient) => {
-                      const product = getProduct(
-                        ingredient.product_id
-                      );
-
-                      const ingredientCost =
-                        calculateIngredientCost(
-                          ingredient
-                        );
-
-                      const isEditing =
-                        editingIngredientId ===
-                        ingredient.id;
-
-                      return (
-                        <div
-                          key={ingredient.id}
-                          style={
-                            ingredientRowStyle
-                          }
-                        >
-                          <div
-                            style={
-                              ingredientMainStyle
-                            }
-                          >
-                            <div
-                              style={
-                                ingredientIconStyle
-                              }
-                            >
-                              {product?.name
-                                ?.charAt(0)
-                                .toUpperCase() ??
-                                "P"}
-                            </div>
-
-                            <div style={{ minWidth: 0 }}>
-                              <div
-                                style={
-                                  ingredientNameStyle
-                                }
-                              >
-                                {product?.name ??
-                                  "Nieznany produkt"}
-                              </div>
-
-                              {!isEditing ? (
-                                <>
-                                  <div
-                                    style={
-                                      ingredientMetaStyle
-                                    }
-                                  >
-                                    {formatNumber(
-                                      ingredient.quantity
-                                    )}{" "}
-                                    {ingredient.unit}
-
-                                    {product &&
-                                      normalizeUnit(
-                                        ingredient.unit
-                                      ) !==
-                                        normalizeUnit(
-                                          product.unit
-                                        ) && (
-                                        <>
-                                          {" "}
-                                          (
-                                          {formatNumber(
-                                            convertQuantity(
-                                              ingredient.quantity,
-                                              ingredient.unit,
-                                              product.unit
-                                            )
-                                          )}{" "}
-                                          {
-                                            product.unit
-                                          }
-                                          )
-                                        </>
-                                      )}
-                                  </div>
-
-                                  {product && (
-                                    <div
-                                      style={
-                                        ingredientPackageStyle
-                                      }
-                                    >
-                                      Opakowanie:{" "}
-                                      {formatNumber(
-                                        product.package_quantity
-                                      )}{" "}
-                                      {product.unit}{" "}
-                                      •{" "}
-                                      {formatMoney(
-                                        Number(
-                                          product.package_price
-                                        )
-                                      )}
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                <div
-                                  style={
-                                    editIngredientInlineStyle
-                                  }
-                                >
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={
-                                      editingIngredientQuantity
-                                    }
-                                    onChange={(event) =>
-                                      setEditingIngredientQuantity(
-                                        event.target.value
-                                      )
-                                    }
-                                    autoFocus
-                                    style={
-                                      editQuantityInputStyle
-                                    }
-                                  />
-
-                                  <span
-                                    style={
-                                      editUnitStyle
-                                    }
-                                  >
-                                    {ingredient.unit}
-                                  </span>
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      saveIngredientQuantity(
-                                        ingredient
-                                      )
-                                    }
-                                    style={
-                                      saveIngredientButtonStyle
-                                    }
-                                  >
-                                    Zapisz
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={
-                                      cancelEditingIngredient
-                                    }
-                                    style={
-                                      cancelIngredientButtonStyle
-                                    }
-                                  >
-                                    Anuluj
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div
-                            style={
-                              ingredientRightStyle
-                            }
-                          >
-                            <strong
-                              style={
-                                ingredientCostStyle
-                              }
-                            >
-                              {formatMoney(
-                                ingredientCost
-                              )}
-                            </strong>
-
-                            {!isEditing && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    startEditingIngredient(
-                                      ingredient
-                                    )
-                                  }
-                                  style={
-                                    editIngredientButtonStyle
-                                  }
-                                >
-                                  Edytuj
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    deleteIngredient(
-                                      ingredient
-                                    )
-                                  }
-                                  style={
-                                    smallDeleteButtonStyle
-                                  }
-                                >
-                                  Usuń
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    }
-                  )}
-                </div>
-              )}
-
-              <div style={totalCostStyle}>
-                <div>
-                  <span
-                    style={totalLabelStyle}
-                  >
-                    Łączny koszt receptury
-                  </span>
-
-                  <span
-                    style={totalHintStyle}
-                  >
-                    {selectedRecipePortions
-                      ? `Dla ${formatNumber(
-                          selectedRecipePortions
-                        )} porcji`
-                      : "Dodaj liczbę porcji, aby obliczyć koszt jednej porcji."}
-                  </span>
-                </div>
-
-                <div style={totalValuesStyle}>
-                  <strong
-                    style={totalValueStyle}
-                  >
-                    {formatMoney(
-                      selectedRecipeCost
-                    )}
-                  </strong>
-
-                  {selectedRecipeCostPerPortion !==
-                    null && (
-                    <span
-                      style={
-                        totalPerPortionStyle
-                      }
-                    >
-                      {formatMoney(
-                        selectedRecipeCostPerPortion
-                      )} / porcja
-                    </span>
-                  )}
-                </div>
+            {success && (
+              <div style={successStyle}>
+                {success}
               </div>
-            </div>
-          )}
+            )}
+
+            <button
+              type="submit"
+              disabled={saving}
+              style={{
+                ...buttonStyle,
+                opacity: saving ? 0.7 : 1,
+                cursor: saving
+                  ? "not-allowed"
+                  : "pointer",
+              }}
+            >
+              {saving
+                ? "Zapisywanie..."
+                : editingId
+                ? "Zapisz zmiany"
+                : "+ Dodaj recepturę"}
+            </button>
+          </form>
         </div>
 
         <div style={listCardStyle}>
@@ -1484,20 +521,86 @@ export default function Recipes() {
               </h3>
 
               <p style={cardSubtitleStyle}>
-                Kliknij recepturę, aby zarządzać
-                jej składnikami.
+                Receptury zapisane w bazie Supabase.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={loadData}
+              onClick={loadRecipes}
               disabled={loading}
               style={refreshButtonStyle}
             >
               Odśwież
             </button>
           </div>
+
+          <div style={filtersStyle}>
+            <div style={searchWrapperStyle}>
+              <span style={searchIconStyle}>
+                🔍
+              </span>
+
+              <input
+                type="text"
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Szukaj receptury lub kategorii..."
+                style={searchInputStyle}
+              />
+            </div>
+
+            <select
+              value={categoryFilter}
+              onChange={(event) =>
+                setCategoryFilter(event.target.value)
+              }
+              style={filterSelectStyle}
+            >
+              <option value="all">
+                Wszystkie kategorie
+              </option>
+
+              {categories.map((category) => (
+                <option
+                  key={category}
+                  value={category}
+                >
+                  {category}
+                </option>
+              ))}
+            </select>
+
+            {(search !== "" ||
+              categoryFilter !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setCategoryFilter("all");
+                }}
+                style={clearFilterButtonStyle}
+              >
+                Wyczyść
+              </button>
+            )}
+          </div>
+
+          {!loading && recipes.length > 0 && (
+            <div style={resultsInfoStyle}>
+              Wyświetlono{" "}
+              <strong>
+                {filteredRecipes.length}
+              </strong>{" "}
+              z{" "}
+              <strong>
+                {recipes.length}
+              </strong>{" "}
+              receptur
+            </div>
+          )}
 
           {loading ? (
             <div style={emptyStyle}>
@@ -1514,191 +617,79 @@ export default function Recipes() {
               </strong>
 
               <p style={emptyTextStyle}>
-                Dodaj pierwszą recepturę za pomocą
-                formularza.
+                Dodaj pierwszą recepturę za pomocą formularza.
+              </p>
+            </div>
+          ) : filteredRecipes.length === 0 ? (
+            <div style={emptyStyle}>
+              <div style={emptyIconStyle}>
+                ?
+              </div>
+
+              <strong>
+                Nie znaleziono receptur
+              </strong>
+
+              <p style={emptyTextStyle}>
+                Zmień wyszukiwanie lub wybierz inną kategorię.
               </p>
             </div>
           ) : (
             <div style={recipesListStyle}>
-              {recipes.map((recipe) => {
-                const recipeCost =
-                  calculateRecipeCost(
-                    recipe.id
-                  );
+              {filteredRecipes.map((recipe) => (
+                <div
+                  key={recipe.id}
+                  style={recipeRowStyle}
+                >
+                  <div style={recipeMainStyle}>
+                    <div style={recipeIconStyle}>
+                      {recipe.name
+                        .charAt(0)
+                        .toUpperCase()}
+                    </div>
 
-                const recipeIngredients =
-                  ingredients.filter(
-                    (ingredient) =>
-                      ingredient.recipe_id ===
-                      recipe.id
-                  );
-
-                const recipeCostPerPortion =
-                  recipe.portions &&
-                  recipe.portions > 0
-                    ? recipeCost /
-                      recipe.portions
-                    : null;
-
-                const isSelected =
-                  selectedRecipeId ===
-                  recipe.id;
-
-                return (
-                  <div
-                    key={recipe.id}
-                    style={{
-                      ...recipeRowStyle,
-                      ...(isSelected
-                        ? selectedRecipeRowStyle
-                        : {}),
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        selectRecipe(recipe)
-                      }
-                      style={
-                        recipeSelectButtonStyle
-                      }
-                    >
-                      <div
-                        style={
-                          recipeMainStyle
-                        }
-                      >
-                        <div
-                          style={
-                            recipeIconStyle
-                          }
-                        >
-                          {recipe.name
-                            .charAt(0)
-                            .toUpperCase()}
-                        </div>
-
-                        <div>
-                          <div
-                            style={
-                              recipeNameStyle
-                            }
-                          >
-                            {recipe.name}
-                          </div>
-
-                          <div
-                            style={
-                              recipeMetaStyle
-                            }
-                          >
-                            {recipe.category ||
-                              "Bez kategorii"}
-
-                            {" • "}
-
-                            {
-                              recipeIngredients.length
-                            }{" "}
-                            {recipeIngredients.length ===
-                            1
-                              ? "składnik"
-                              : recipeIngredients.length >=
-                                  2 &&
-                                recipeIngredients.length <=
-                                  4
-                              ? "składniki"
-                              : "składników"}
-                          </div>
-                        </div>
+                    <div>
+                      <div style={recipeNameStyle}>
+                        {recipe.name}
                       </div>
 
-                      <div
-                        style={
-                          recipeInfoStyle
-                        }
-                      >
-                        <div>
-                          <span
-                            style={
-                              detailLabelStyle
-                            }
-                          >
-                            Porcje
-                          </span>
+                      <div style={recipeMetaStyle}>
+                        {recipe.category ||
+                          "Bez kategorii"}
 
-                          <strong>
-                            {getRecipePortionsLabel(
-                              recipe.portions
-                            )}
-                          </strong>
-                        </div>
-
-                        <div>
-                          <span
-                            style={
-                              detailLabelStyle
-                            }
-                          >
-                            Rozmiar
-                          </span>
-
-                          <strong>
-                            {recipe.diameter_cm
-                              ? `${formatNumber(
-                                  recipe.diameter_cm
-                                )} cm`
-                              : "—"}
-
-                            {recipe.height_cm
-                              ? ` × ${formatNumber(
-                                  recipe.height_cm
-                                )} cm`
-                              : ""}
-                          </strong>
-                        </div>
-
-                        <div>
-                          <span
-                            style={
-                              detailLabelStyle
-                            }
-                          >
-                            Koszt
-                          </span>
-
-                          <strong
-                            style={
-                              recipeCostValueStyle
-                            }
-                          >
-                            {formatMoney(
-                              recipeCost
-                            )}
-                          </strong>
-
-                          {recipeCostPerPortion !==
-                            null && (
-                            <span
-                              style={
-                                recipeCostPerPortionStyle
-                              }
-                            >
-                              {formatMoney(
-                                recipeCostPerPortion
-                              )}{" "}
-                              / porcja
-                            </span>
-                          )}
-                        </div>
+                        {recipe.servings !== null
+                          ? ` • ${formatServings(
+                              recipe.servings
+                            )} porcji`
+                          : ""}
                       </div>
-                    </button>
 
-                    <div
-                      style={
-                        recipeActionsStyle
-                      }
-                    >
+                      {recipe.description && (
+                        <div style={descriptionStyle}>
+                          {recipe.description}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={recipeDetailsStyle}>
+                    <div>
+                      <span style={detailLabelStyle}>
+                        Porcje
+                      </span>
+
+                      <strong>
+                        {formatServings(
+                          recipe.servings
+                        )}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span style={detailLabelStyle}>
+                        Status
+                      </span>
+
                       <button
                         type="button"
                         onClick={() =>
@@ -1715,30 +706,32 @@ export default function Recipes() {
                           ? "Aktywna"
                           : "Nieaktywna"}
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          startEditing(recipe)
-                        }
-                        style={editButtonStyle}
-                      >
-                        Edytuj
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          deleteRecipe(recipe)
-                        }
-                        style={deleteButtonStyle}
-                      >
-                        Usuń
-                      </button>
                     </div>
                   </div>
-                );
-              })}
+
+                  <div style={actionsStyle}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        startEditing(recipe)
+                      }
+                      style={editButtonStyle}
+                    >
+                      Edytuj
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        deleteRecipe(recipe)
+                      }
+                      style={deleteButtonStyle}
+                    >
+                      Usuń
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1792,7 +785,7 @@ const countBadgeStyle = {
 const contentGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(320px, 420px) minmax(0, 1fr)",
+    "minmax(300px, 380px) minmax(0, 1fr)",
   gap: "20px",
   alignItems: "start",
 };
@@ -1802,15 +795,6 @@ const formCardStyle = {
   border: "1px solid #e9e2da",
   borderRadius: "18px",
   padding: "24px",
-  boxSizing: "border-box" as const,
-};
-
-const ingredientsCardStyle = {
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "18px",
-  padding: "24px",
-  marginTop: "20px",
   boxSizing: "border-box" as const,
 };
 
@@ -1876,13 +860,6 @@ const textareaStyle = {
   fontFamily: "inherit",
 };
 
-const threeColumnStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "1fr 1fr 1fr",
-  gap: "10px",
-};
-
 const checkboxLabelStyle = {
   display: "flex",
   alignItems: "center",
@@ -1901,19 +878,6 @@ const buttonStyle = {
   color: "#ffffff",
   fontSize: "14px",
   fontWeight: 600,
-  cursor: "pointer",
-};
-
-const smallButtonStyle = {
-  width: "100%",
-  border: "none",
-  borderRadius: "9px",
-  padding: "11px 13px",
-  background: "#8a6d4b",
-  color: "#ffffff",
-  fontSize: "13px",
-  fontWeight: 600,
-  cursor: "pointer",
 };
 
 const cancelButtonStyle = {
@@ -1934,6 +898,68 @@ const refreshButtonStyle = {
   padding: "8px 12px",
   cursor: "pointer",
   fontSize: "12px",
+};
+
+const filtersStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(200px, 1fr) 220px auto",
+  gap: "10px",
+  marginBottom: "12px",
+};
+
+const searchWrapperStyle = {
+  position: "relative" as const,
+};
+
+const searchIconStyle = {
+  position: "absolute" as const,
+  left: "12px",
+  top: "50%",
+  transform: "translateY(-50%)",
+  fontSize: "13px",
+  opacity: 0.6,
+};
+
+const searchInputStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  border: "1px solid #ddd3c9",
+  borderRadius: "9px",
+  padding: "11px 12px 11px 34px",
+  background: "#ffffff",
+  color: "#292522",
+  fontSize: "13px",
+  outline: "none",
+};
+
+const filterSelectStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  border: "1px solid #ddd3c9",
+  borderRadius: "9px",
+  padding: "11px 12px",
+  background: "#ffffff",
+  color: "#514b46",
+  fontSize: "13px",
+  outline: "none",
+};
+
+const clearFilterButtonStyle = {
+  border: "1px solid #ddd3c9",
+  background: "#ffffff",
+  color: "#8a6d4b",
+  borderRadius: "9px",
+  padding: "0 13px",
+  cursor: "pointer",
+  fontSize: "12px",
+  whiteSpace: "nowrap" as const,
+};
+
+const resultsInfoStyle = {
+  color: "#8a837d",
+  fontSize: "12px",
+  marginBottom: "12px",
 };
 
 const errorStyle = {
@@ -1986,247 +1012,6 @@ const emptyTextStyle = {
   fontSize: "13px",
 };
 
-const ingredientFormStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "minmax(220px, 1fr) 120px 120px 100px",
-  gap: "10px",
-  alignItems: "end",
-  marginBottom: "20px",
-};
-
-const ingredientProductFieldStyle = {
-  minWidth: 0,
-};
-
-const ingredientQuantityFieldStyle = {
-  minWidth: 0,
-};
-
-const ingredientUnitFieldStyle = {
-  minWidth: 0,
-};
-
-const ingredientButtonFieldStyle = {
-  paddingBottom: "16px",
-};
-
-const emptyIngredientsStyle = {
-  border: "1px dashed #ddd3c9",
-  borderRadius: "11px",
-  padding: "20px",
-  textAlign: "center" as const,
-  color: "#8a837d",
-  fontSize: "13px",
-};
-
-const ingredientsListStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "8px",
-};
-
-const ingredientRowStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "15px",
-  border: "1px solid #eee7e0",
-  borderRadius: "11px",
-  padding: "10px 12px",
-};
-
-const ingredientMainStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  minWidth: 0,
-};
-
-const ingredientIconStyle = {
-  width: "34px",
-  height: "34px",
-  borderRadius: "9px",
-  background: "#f2ebe4",
-  color: "#8a6d4b",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontWeight: 700,
-  flexShrink: 0,
-};
-
-const ingredientNameStyle = {
-  fontSize: "14px",
-  fontWeight: 600,
-  color: "#292522",
-};
-
-const ingredientMetaStyle = {
-  marginTop: "3px",
-  color: "#8a837d",
-  fontSize: "12px",
-};
-
-const ingredientPackageStyle = {
-  marginTop: "3px",
-  color: "#aaa19a",
-  fontSize: "10px",
-};
-
-const ingredientRightStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "8px",
-  flexShrink: 0,
-};
-
-const ingredientCostStyle = {
-  color: "#477451",
-  minWidth: "70px",
-  textAlign: "right" as const,
-};
-
-const smallDeleteButtonStyle = {
-  border: "1px solid #e3c1bd",
-  background: "#fff8f7",
-  color: "#a34f46",
-  borderRadius: "7px",
-  padding: "6px 9px",
-  cursor: "pointer",
-  fontSize: "11px",
-  fontWeight: 600,
-};
-
-const editIngredientButtonStyle = {
-  border: "1px solid #d8c8b8",
-  background: "#ffffff",
-  color: "#8a6d4b",
-  borderRadius: "7px",
-  padding: "6px 9px",
-  cursor: "pointer",
-  fontSize: "11px",
-  fontWeight: 600,
-};
-
-const editIngredientInlineStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "7px",
-  marginTop: "6px",
-  flexWrap: "wrap" as const,
-};
-
-const editQuantityInputStyle = {
-  width: "90px",
-  border: "1px solid #cdbda9",
-  borderRadius: "7px",
-  padding: "7px 8px",
-  fontSize: "12px",
-  outline: "none",
-};
-
-const editUnitStyle = {
-  color: "#716b65",
-  fontSize: "12px",
-  fontWeight: 600,
-};
-
-const saveIngredientButtonStyle = {
-  border: "none",
-  background: "#477451",
-  color: "#ffffff",
-  borderRadius: "7px",
-  padding: "7px 9px",
-  cursor: "pointer",
-  fontSize: "11px",
-  fontWeight: 600,
-};
-
-const cancelIngredientButtonStyle = {
-  border: "1px solid #ddd3c9",
-  background: "#ffffff",
-  color: "#716b65",
-  borderRadius: "7px",
-  padding: "7px 9px",
-  cursor: "pointer",
-  fontSize: "11px",
-};
-
-const costSummaryStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "15px",
-  background: "#f0f8f2",
-  border: "1px solid #bdd9c3",
-  borderRadius: "11px",
-  padding: "9px 12px",
-};
-
-const costSmallLabelStyle = {
-  display: "block",
-  color: "#6f806f",
-  fontSize: "10px",
-  marginBottom: "2px",
-};
-
-const costBigValueStyle = {
-  color: "#477451",
-  fontSize: "16px",
-};
-
-const costPerPortionStyle = {
-  color: "#477451",
-  fontSize: "15px",
-};
-
-const costDividerStyle = {
-  width: "1px",
-  height: "30px",
-  background: "#bdd9c3",
-};
-
-const totalCostStyle = {
-  marginTop: "16px",
-  paddingTop: "16px",
-  borderTop: "1px solid #eee7e0",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "15px",
-};
-
-const totalLabelStyle = {
-  display: "block",
-  color: "#514b46",
-  fontSize: "13px",
-  fontWeight: 700,
-};
-
-const totalHintStyle = {
-  display: "block",
-  marginTop: "3px",
-  color: "#9a928b",
-  fontSize: "11px",
-};
-
-const totalValuesStyle = {
-  textAlign: "right" as const,
-};
-
-const totalValueStyle = {
-  display: "block",
-  color: "#477451",
-  fontSize: "24px",
-};
-
-const totalPerPortionStyle = {
-  display: "block",
-  marginTop: "3px",
-  color: "#8a837d",
-  fontSize: "11px",
-};
-
 const recipesListStyle = {
   display: "flex",
   flexDirection: "column" as const,
@@ -2236,36 +1021,20 @@ const recipesListStyle = {
 const recipeRowStyle = {
   border: "1px solid #eee7e0",
   borderRadius: "13px",
-  padding: "12px",
+  padding: "15px",
   display: "flex",
-  alignItems: "center",
-  gap: "10px",
-};
-
-const selectedRecipeRowStyle = {
-  border: "1px solid #d8c8b8",
-  background: "#fcfaf7",
-};
-
-const recipeSelectButtonStyle = {
-  flex: 1,
-  minWidth: 0,
-  border: "none",
-  background: "transparent",
-  padding: 0,
-  display: "flex",
-  alignItems: "center",
   justifyContent: "space-between",
-  gap: "18px",
-  cursor: "pointer",
-  textAlign: "left" as const,
+  alignItems: "center",
+  gap: "20px",
+  flexWrap: "wrap" as const,
 };
 
 const recipeMainStyle = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   gap: "12px",
-  minWidth: "190px",
+  minWidth: "220px",
+  flex: 1,
 };
 
 const recipeIconStyle = {
@@ -2293,10 +1062,17 @@ const recipeMetaStyle = {
   fontSize: "12px",
 };
 
-const recipeInfoStyle = {
+const descriptionStyle = {
+  marginTop: "7px",
+  color: "#716b65",
+  fontSize: "12px",
+  lineHeight: 1.4,
+};
+
+const recipeDetailsStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "22px",
+  gap: "25px",
   flexWrap: "wrap" as const,
 };
 
@@ -2309,29 +1085,10 @@ const detailLabelStyle = {
   marginBottom: "4px",
 };
 
-const recipeCostValueStyle = {
-  display: "block",
-  color: "#477451",
-};
-
-const recipeCostPerPortionStyle = {
-  display: "block",
-  marginTop: "3px",
-  color: "#8a837d",
-  fontSize: "10px",
-};
-
-const recipeActionsStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "7px",
-  flexShrink: 0,
-};
-
 const statusStyle = {
   border: "none",
   borderRadius: "20px",
-  padding: "5px 9px",
+  padding: "4px 8px",
   fontSize: "11px",
   fontWeight: 600,
   cursor: "pointer",
@@ -2345,6 +1102,12 @@ const activeStatusStyle = {
 const inactiveStatusStyle = {
   background: "#f3f1ef",
   color: "#817a74",
+};
+
+const actionsStyle = {
+  display: "flex",
+  gap: "8px",
+  marginLeft: "auto",
 };
 
 const editButtonStyle = {
