@@ -36,8 +36,7 @@ type RecipeIngredient = {
   product_id: string;
   quantity: number;
   unit: string;
-  ingredient_cost: number | null;
-  created_at: string;
+  created_at?: string;
 };
 
 type IngredientRow = {
@@ -104,7 +103,7 @@ export default function Recipes() {
       supabase
         .from("recipes")
         .select("*")
-        .order("name", { ascending: true }),
+        .order("created_at", { ascending: false }),
 
       supabase
         .from("products")
@@ -131,6 +130,7 @@ export default function Recipes() {
 
     setRecipes((recipesResult.data ?? []) as Recipe[]);
     setProducts((productsResult.data ?? []) as Product[]);
+
     setLoading(false);
   }
 
@@ -164,7 +164,7 @@ export default function Recipes() {
     return Number.isFinite(number) ? number : null;
   }
 
-  function formatMoney(value: number | null | undefined) {
+  function formatMoney(value: number | null) {
     if (value === null || value === undefined) {
       return "—";
     }
@@ -177,13 +177,17 @@ export default function Recipes() {
   function addIngredient() {
     const firstAvailableProduct = products[0];
 
+    if (!firstAvailableProduct) {
+      return;
+    }
+
     setIngredients((current) => [
       ...current,
       {
         id: crypto.randomUUID(),
-        productId: firstAvailableProduct?.id ?? "",
+        productId: firstAvailableProduct.id,
         quantity: "",
-        unit: firstAvailableProduct?.unit ?? "",
+        unit: firstAvailableProduct.unit ?? "",
       },
     ]);
   }
@@ -238,19 +242,15 @@ export default function Recipes() {
 
     const quantity = parseNumber(ingredient.quantity);
 
-    if (
-      quantity <= 0 ||
-      !Number.isFinite(quantity) ||
-      Number(product.package_quantity) <= 0
-    ) {
-      return 0;
-    }
-
     const packageQuantity = Number(product.package_quantity);
     const packagePrice = Number(product.package_price);
 
     if (
+      quantity <= 0 ||
+      !Number.isFinite(quantity) ||
+      packageQuantity <= 0 ||
       !Number.isFinite(packageQuantity) ||
+      packagePrice < 0 ||
       !Number.isFinite(packagePrice)
     ) {
       return 0;
@@ -265,29 +265,37 @@ export default function Recipes() {
     }, 0);
   }, [ingredients, products]);
 
+  const laborCost = useMemo(() => {
+    return parseNumber(form.laborCost);
+  }, [form.laborCost]);
+
+  const energyCost = useMemo(() => {
+    return parseNumber(form.energyCost);
+  }, [form.energyCost]);
+
+  const packagingCost = useMemo(() => {
+    return parseNumber(form.packagingCost);
+  }, [form.packagingCost]);
+
   const additionalCosts = useMemo(() => {
-    const labor = parseNumber(form.laborCost);
-    const energy = parseNumber(form.energyCost);
-    const packaging = parseNumber(form.packagingCost);
+    return laborCost + energyCost + packagingCost;
+  }, [laborCost, energyCost, packagingCost]);
 
-    return labor + energy + packaging;
-  }, [
-    form.laborCost,
-    form.energyCost,
-    form.packagingCost,
-  ]);
+  const totalCost = useMemo(() => {
+    return ingredientsCost + additionalCosts;
+  }, [ingredientsCost, additionalCosts]);
 
-  const totalCost = ingredientsCost + additionalCosts;
+  const marginPercent = useMemo(() => {
+    return parseNumber(form.marginPercent);
+  }, [form.marginPercent]);
 
   const salePrice = useMemo(() => {
-    const margin = parseNumber(form.marginPercent);
-
-    if (margin <= 0) {
+    if (marginPercent <= 0) {
       return totalCost;
     }
 
-    return totalCost * (1 + margin / 100);
-  }, [totalCost, form.marginPercent]);
+    return totalCost * (1 + marginPercent / 100);
+  }, [totalCost, marginPercent]);
 
   async function loadRecipeIngredients(recipeId: string) {
     const { data, error: ingredientsError } = await supabase
@@ -324,45 +332,38 @@ export default function Recipes() {
       name: recipe.name ?? "",
       description: recipe.description ?? "",
       category: recipe.category ?? "",
-
       portions:
         recipe.portions !== null
           ? String(recipe.portions).replace(".", ",")
           : "",
-
       diameterCm:
         recipe.diameter_cm !== null
           ? String(recipe.diameter_cm).replace(".", ",")
           : "",
-
       heightCm:
         recipe.height_cm !== null
           ? String(recipe.height_cm).replace(".", ",")
           : "",
-
       laborCost:
         recipe.labor_cost !== null
           ? String(recipe.labor_cost).replace(".", ",")
           : "",
-
       energyCost:
         recipe.energy_cost !== null
           ? String(recipe.energy_cost).replace(".", ",")
           : "",
-
       packagingCost:
         recipe.packaging_cost !== null
           ? String(recipe.packaging_cost).replace(".", ",")
           : "",
-
       marginPercent:
         recipe.margin_percent !== null
           ? String(recipe.margin_percent).replace(".", ",")
           : "",
-
       active: recipe.active,
     });
 
+    setIngredients([]);
     setError("");
     setSuccess("");
 
@@ -426,10 +427,14 @@ export default function Recipes() {
     const diameterCm = parseNullableNumber(form.diameterCm);
     const heightCm = parseNullableNumber(form.heightCm);
 
-    const laborCost = parseNumber(form.laborCost);
-    const energyCost = parseNumber(form.energyCost);
-    const packagingCost = parseNumber(form.packagingCost);
-    const marginPercent = parseNumber(form.marginPercent);
+    const currentLaborCost = parseNumber(form.laborCost);
+    const currentEnergyCost = parseNumber(form.energyCost);
+    const currentPackagingCost = parseNumber(
+      form.packagingCost
+    );
+    const currentMarginPercent = parseNumber(
+      form.marginPercent
+    );
 
     if (portions !== null && portions <= 0) {
       setError(
@@ -452,28 +457,28 @@ export default function Recipes() {
       return;
     }
 
-    if (laborCost < 0) {
+    if (currentLaborCost < 0) {
       setError(
         "Koszt pracy nie może być ujemny."
       );
       return;
     }
 
-    if (energyCost < 0) {
+    if (currentEnergyCost < 0) {
       setError(
         "Koszt energii nie może być ujemny."
       );
       return;
     }
 
-    if (packagingCost < 0) {
+    if (currentPackagingCost < 0) {
       setError(
         "Koszt opakowania nie może być ujemny."
       );
       return;
     }
 
-    if (marginPercent < 0) {
+    if (currentMarginPercent < 0) {
       setError(
         "Marża nie może być ujemna."
       );
@@ -481,73 +486,72 @@ export default function Recipes() {
     }
 
     /*
-     * Najpierw ponownie obliczamy koszt składników
-     * bezpośrednio przed zapisem.
-     */
-    const calculatedIngredientsCost = ingredients.reduce(
-      (sum, ingredient) => {
-        return sum + getIngredientCost(ingredient);
-      },
-      0
-    );
+      WAŻNE:
 
-    /*
-     * Łączny koszt receptury:
-     *
-     * produkty
-     * + praca
-     * + energia
-     * + opakowanie
-     */
+      Koszt receptury =
+      koszt produktów
+      + koszt pracy
+      + koszt energii
+      + koszt opakowania
+    */
+
+    const calculatedAdditionalCosts =
+      currentLaborCost +
+      currentEnergyCost +
+      currentPackagingCost;
+
     const calculatedTotalCost =
-      calculatedIngredientsCost +
-      laborCost +
-      energyCost +
-      packagingCost;
+      ingredientsCost +
+      calculatedAdditionalCosts;
 
-    const roundedIngredientsCost = Number(
-      calculatedIngredientsCost.toFixed(2)
-    );
-
-    const roundedTotalCost = Number(
-      calculatedTotalCost.toFixed(2)
-    );
-
-    setSaving(true);
-
-    /*
-     * To jest JEDYNY obiekt recipeData.
-     * Nie dodajemy poniżej drugi raz tych samych pól.
-     */
     const recipeData = {
       name: cleanName,
+
       description:
         form.description.trim() || null,
+
       category:
         form.category.trim() || null,
+
       portions,
+
       diameter_cm: diameterCm,
+
       height_cm: heightCm,
+
       active: form.active,
 
-      // Produkty + praca + energia + opakowanie
-      cost: roundedTotalCost,
-
-      labor_cost: Number(laborCost.toFixed(2)),
-      energy_cost: Number(energyCost.toFixed(2)),
-      packaging_cost: Number(
-        packagingCost.toFixed(2)
+      cost: Number(
+        calculatedTotalCost.toFixed(2)
       ),
+
+      labor_cost: Number(
+        currentLaborCost.toFixed(2)
+      ),
+
+      energy_cost: Number(
+        currentEnergyCost.toFixed(2)
+      ),
+
+      packaging_cost: Number(
+        currentPackagingCost.toFixed(2)
+      ),
+
       margin_percent: Number(
-        marginPercent.toFixed(2)
+        currentMarginPercent.toFixed(2)
       ),
     };
+
+    setSaving(true);
 
     let recipeId: string | null = editingId;
 
     /*
-     * EDYCJA ISTNIEJĄCEJ RECEPTURY
-     */
+      ============================
+      EDYCJA ISTNIEJĄCEJ RECEPTURY
+      ============================
+    */
+
     if (editingId) {
       const { error: updateError } = await supabase
         .from("recipes")
@@ -563,15 +567,15 @@ export default function Recipes() {
       }
 
       /*
-       * Usuwamy stare składniki tylko z tej
-       * konkretnej receptury.
-       */
-      const {
-        error: deleteIngredientsError,
-      } = await supabase
-        .from("recipe_ingredients")
-        .delete()
-        .eq("recipe_id", editingId);
+        Najpierw usuwamy stare składniki,
+        a następnie zapisujemy aktualną listę.
+      */
+
+      const { error: deleteIngredientsError } =
+        await supabase
+          .from("recipe_ingredients")
+          .delete()
+          .eq("recipe_id", editingId);
 
       if (deleteIngredientsError) {
         setError(
@@ -583,17 +587,18 @@ export default function Recipes() {
     }
 
     /*
-     * NOWA RECEPTURA
-     */
+      ============================
+      NOWA RECEPTURA
+      ============================
+    */
+
     else {
-      const {
-        data,
-        error: insertError,
-      } = await supabase
-        .from("recipes")
-        .insert(recipeData)
-        .select("id")
-        .single();
+      const { data, error: insertError } =
+        await supabase
+          .from("recipes")
+          .insert(recipeData)
+          .select("id")
+          .single();
 
       if (insertError || !data) {
         setError(
@@ -602,6 +607,7 @@ export default function Recipes() {
             "Brak identyfikatora receptury."
           }`
         );
+
         setSaving(false);
         return;
       }
@@ -613,30 +619,27 @@ export default function Recipes() {
       setError(
         "Nie udało się ustalić identyfikatora receptury."
       );
+
       setSaving(false);
       return;
     }
 
     /*
-     * Zapisujemy składniki.
-     *
-     * ingredient_cost = koszt konkretnego składnika
-     * w tej konkretnej recepturze.
-     */
+      ============================
+      ZAPIS SKŁADNIKÓW
+      ============================
+    */
+
     const ingredientData = ingredients.map(
       (ingredient) => ({
         recipe_id: recipeId,
         product_id: ingredient.productId,
         quantity: Number(
-          parseNumber(ingredient.quantity).toFixed(4)
+          parseNumber(
+            ingredient.quantity
+          ).toFixed(3)
         ),
-        unit:
-          ingredient.unit ||
-          getProduct(ingredient.productId)?.unit ||
-          "",
-        ingredient_cost: Number(
-          getIngredientCost(ingredient).toFixed(2)
-        ),
+        unit: ingredient.unit,
       })
     );
 
@@ -650,16 +653,16 @@ export default function Recipes() {
       setError(
         `Receptura została zapisana, ale nie udało się zapisać składników: ${ingredientsInsertError.message}`
       );
+
       setSaving(false);
       return;
     }
 
     /*
-     * Pobieramy ponownie dane z bazy.
-     * Dzięki temu lista pokazuje faktycznie
-     * zapisany cost, a nie tylko wartość z formularza.
-     */
-    await loadData();
+      ============================
+      SUKCES
+      ============================
+    */
 
     setSuccess(
       editingId
@@ -670,6 +673,8 @@ export default function Recipes() {
     setForm(emptyRecipeForm);
     setIngredients([]);
     setEditingId(null);
+
+    await loadData();
 
     setSaving(false);
   }
@@ -686,12 +691,11 @@ export default function Recipes() {
     setError("");
     setSuccess("");
 
-    const {
-      error: ingredientsError,
-    } = await supabase
-      .from("recipe_ingredients")
-      .delete()
-      .eq("recipe_id", recipe.id);
+    const { error: ingredientsError } =
+      await supabase
+        .from("recipe_ingredients")
+        .delete()
+        .eq("recipe_id", recipe.id);
 
     if (ingredientsError) {
       setError(
@@ -700,10 +704,11 @@ export default function Recipes() {
       return;
     }
 
-    const { error: recipeError } = await supabase
-      .from("recipes")
-      .delete()
-      .eq("id", recipe.id);
+    const { error: recipeError } =
+      await supabase
+        .from("recipes")
+        .delete()
+        .eq("id", recipe.id);
 
     if (recipeError) {
       setError(
@@ -727,12 +732,15 @@ export default function Recipes() {
     setError("");
     setSuccess("");
 
-    const { error: updateError } = await supabase
-      .from("recipes")
-      .update({
-        active: !recipe.active,
-      })
-      .eq("id", recipe.id);
+    const newActiveStatus = !recipe.active;
+
+    const { error: updateError } =
+      await supabase
+        .from("recipes")
+        .update({
+          active: newActiveStatus,
+        })
+        .eq("id", recipe.id);
 
     if (updateError) {
       setError(
@@ -746,16 +754,16 @@ export default function Recipes() {
         item.id === recipe.id
           ? {
               ...item,
-              active: !item.active,
+              active: newActiveStatus,
             }
           : item
       )
     );
 
     setSuccess(
-      recipe.active
-        ? `Receptura "${recipe.name}" została wyłączona.`
-        : `Receptura "${recipe.name}" została aktywowana.`
+      newActiveStatus
+        ? `Receptura "${recipe.name}" została aktywowana.`
+        : `Receptura "${recipe.name}" została wyłączona.`
     );
   }
 
@@ -763,7 +771,9 @@ export default function Recipes() {
     return Array.from(
       new Set(
         recipes
-          .map((recipe) => recipe.category?.trim())
+          .map((recipe) =>
+            recipe.category?.trim()
+          )
           .filter(
             (category): category is string =>
               Boolean(category)
@@ -793,7 +803,10 @@ export default function Recipes() {
         categoryFilter === "all" ||
         recipe.category === categoryFilter;
 
-      return matchesSearch && matchesCategory;
+      return (
+        matchesSearch &&
+        matchesCategory
+      );
     });
   }, [
     recipes,
@@ -999,7 +1012,8 @@ export default function Recipes() {
                 type="button"
                 onClick={addIngredient}
                 disabled={
-                  saving || products.length === 0
+                  saving ||
+                  products.length === 0
                 }
                 style={{
                   ...addIngredientButtonStyle,
@@ -1343,7 +1357,7 @@ export default function Recipes() {
                   placeholder="0,00"
                   disabled={saving}
                   style={priceInputStyle}
-                />
+              />
 
                 <span style={currencyStyle}>
                   zł
@@ -1392,9 +1406,7 @@ export default function Recipes() {
               </strong>
             </div>
 
-            <label
-              style={checkboxLabelStyle}
-            >
+            <label style={checkboxLabelStyle}>
               <input
                 type="checkbox"
                 checked={form.active}
@@ -1485,7 +1497,9 @@ export default function Recipes() {
                 type="text"
                 value={search}
                 onChange={(event) =>
-                  setSearch(event.target.value)
+                  setSearch(
+                    event.target.value
+                  )
                 }
                 placeholder="Szukaj receptury lub kategorii..."
                 style={searchInputStyle}
@@ -1536,9 +1550,7 @@ export default function Recipes() {
 
           {!loading &&
             recipes.length > 0 && (
-              <div
-                style={resultsInfoStyle}
-              >
+              <div style={resultsInfoStyle}>
                 Wyświetlono{" "}
                 <strong>
                   {filteredRecipes.length}
@@ -1567,15 +1579,12 @@ export default function Recipes() {
                 Brak receptur
               </strong>
 
-              <p
-                style={emptyTextStyle}
-              >
+              <p style={emptyTextStyle}>
                 Dodaj pierwszą recepturę za
                 pomocą formularza.
               </p>
             </div>
-          ) : filteredRecipes.length ===
-            0 ? (
+          ) : filteredRecipes.length === 0 ? (
             <div style={emptyStyle}>
               <div
                 style={emptyIconStyle}
@@ -1587,17 +1596,13 @@ export default function Recipes() {
                 Nie znaleziono receptur
               </strong>
 
-              <p
-                style={emptyTextStyle}
-              >
+              <p style={emptyTextStyle}>
                 Zmień wyszukiwanie lub
                 kategorię.
               </p>
             </div>
           ) : (
-            <div
-              style={recipesListStyle}
-            >
+            <div style={recipesListStyle}>
               {filteredRecipes.map(
                 (recipe) => (
                   <div
