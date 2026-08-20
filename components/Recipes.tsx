@@ -2612,6 +2612,65 @@ export default function Recipes() {
                     color: "#292522",
                   }}
                 >
+                  {ingredients.length > 0 && (
+  <div
+    style={{
+      marginBottom: "20px",
+      paddingBottom: "15px",
+      borderBottom: "1px solid #eee7e0",
+    }}
+  >
+    <h3
+      style={{
+        margin: "0 0 12px",
+        fontSize: "16px",
+        color: "#292522",
+      }}
+    >
+      Składniki
+    </h3>
+
+    {ingredients.map((ingredient) => {
+      const product = products.find(
+        (item) => item.id === ingredient.productId
+      );
+
+      return (
+        <div
+          key={ingredient.id}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            padding: "7px 0",
+            fontSize: "13px",
+          }}
+        >
+          <span>
+            <strong>
+              {product?.name ?? "Nieznany produkt"}
+            </strong>{" "}
+            — {ingredient.quantity} {ingredient.unit}
+          </span>
+
+          <strong>
+            {formatMoney(
+              product
+                ? calculateIngredientCost(
+                    product,
+                    ingredient.quantity,
+                    ingredient.unit
+                  )
+                : 0
+            )}
+          </strong>
+        </div>
+      );
+    })}
+  </div>
+)}
+                <h3>
                   Koszt receptury
                 </h3>
 
@@ -3146,9 +3205,10 @@ export default function Recipes() {
 
                                             <button
                         type="button"
-                        onClick={() =>
-                          setPreviewRecipe(recipe)
-                        }
+                        onClick={async () => {
+  await loadRecipeIngredients(recipe.id);
+  setPreviewRecipe(recipe);
+}}
                         style={{
                           ...editButtonStyle,
                           background: "#f5f1eb",
