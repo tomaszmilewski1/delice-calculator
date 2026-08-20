@@ -82,13 +82,23 @@ const emptyRecipeForm: RecipeForm = {
 export default function Recipes() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
+  const [ingredients, setIngredients] =
+    useState<IngredientRow[]>([]);
+
+  const [previewRecipe, setPreviewRecipe] =
+    useState<Recipe | null>(null);
 
   const [form, setForm] =
     useState<RecipeForm>(emptyRecipeForm);
 
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  const [editingId, setEditingId] = useState
+    <string | null>(null);
+
+  const [form, setForm] =
+    useState<RecipeForm>(emptyRecipeForm);
+
+  const [editingId, setEditingId] = useState
+    <string | null>(null);
 
   const [loading, setLoading] =
     useState(true);
@@ -2477,22 +2487,274 @@ export default function Recipes() {
                 ? "Zapisz zmiany"
                 : "+ Dodaj recepturę"}
                         </button>
-
-              <button
-                type="button"
-                onClick={() => window.print()}
-                style={{
-                  ...buttonStyle,
-                  background: "#111827",
-                  color: "#fff",
-                  border: "1px solid #111827",
-                }}
-              >
-                🖨️ Drukuj kartę receptury
-              </button>
           </form>
         </div>
 
+        {previewRecipe && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.45)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: "20px",
+            }}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: "16px",
+                width: "100%",
+                maxWidth: "700px",
+                maxHeight: "90vh",
+                overflowY: "auto",
+                padding: "25px",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "20px",
+                }}
+              >
+                <div>
+                  <h2
+                    style={{
+                      margin: 0,
+                      color: "#292522",
+                    }}
+                  >
+                    {previewRecipe.name}
+                  </h2>
+
+                  {previewRecipe.category && (
+                    <div
+                      style={{
+                        marginTop: "5px",
+                        color: "#8a837d",
+                        fontSize: "13px",
+                      }}
+                    >
+                      {previewRecipe.category}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPreviewRecipe(null)
+                  }
+                  style={{
+                    border: "1px solid #ddd",
+                    background: "#fff",
+                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Zamknij
+                </button>
+              </div>
+
+              {previewRecipe.description && (
+                <p
+                  style={{
+                    color: "#716b65",
+                    fontSize: "14px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {previewRecipe.description}
+                </p>
+              )}
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(3, 1fr)",
+                  gap: "12px",
+                  marginBottom: "20px",
+                }}
+              >
+                <div>
+                  <strong>Porcje</strong>
+                  <div>
+                    {previewRecipe.portions ?? "-"}
+                  </div>
+                </div>
+
+                <div>
+                  <strong>Średnica</strong>
+                  <div>
+                    {previewRecipe.diameter_cm ?? "-"} cm
+                  </div>
+                </div>
+
+                <div>
+                  <strong>Wysokość</strong>
+                  <div>
+                    {previewRecipe.height_cm ?? "-"} cm
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  borderTop: "1px solid #eee7e0",
+                  paddingTop: "18px",
+                }}
+              >
+                <h3
+                  style={{
+                    marginTop: 0,
+                    color: "#292522",
+                  }}
+                >
+                  Koszt receptury
+                </h3>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <span>Koszt produktów</span>
+                  <strong>
+                    {formatMoney(
+                      previewRecipe.cost ?? 0
+                    )}
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <span>Koszt pracy</span>
+                  <strong>
+                    {formatMoney(
+                      previewRecipe.labor_cost ?? 0
+                    )}
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <span>Koszt energii</span>
+                  <strong>
+                    {formatMoney(
+                      previewRecipe.energy_cost ?? 0
+                    )}
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <span>Opakowanie</span>
+                  <strong>
+                    {formatMoney(
+                      previewRecipe.packaging_cost ?? 0
+                    )}
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginTop: "15px",
+                    paddingTop: "15px",
+                    borderTop: "1px solid #eee7e0",
+                    fontSize: "18px",
+                  }}
+                >
+                  <strong>Łączny koszt</strong>
+                  <strong>
+                    {formatMoney(
+                      previewRecipe.cost ?? 0
+                    )}
+                  </strong>
+                </div>
+
+                {previewRecipe.margin_percent != null && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginTop: "10px",
+                    }}
+                  >
+                    <span>Marża</span>
+                    <strong>
+                      {previewRecipe.margin_percent}%
+                    </strong>
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "10px",
+                  marginTop: "25px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPreviewRecipe(null)
+                  }
+                  style={{
+                    ...buttonStyle,
+                    background: "#fff",
+                    color: "#8a6d4b",
+                    border: "1px solid #d8c8b8",
+                  }}
+                >
+                  Zamknij
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  style={{
+                    ...buttonStyle,
+                    background: "#111827",
+                    color: "#fff",
+                    border: "1px solid #111827",
+                  }}
+                >
+                  🖨️ Drukuj kartę receptury
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <div
           style={
             listCardStyle
@@ -2869,7 +3131,7 @@ export default function Recipes() {
                       </div>
                     </div>
 
-                    <div
+                                       <div
                       style={
                         actionsStyle
                       }
@@ -2886,6 +3148,21 @@ export default function Recipes() {
                         }
                       >
                         Edytuj
+                      </button>
+
+                                            <button
+                        type="button"
+                        onClick={() =>
+                          setPreviewRecipe(recipe)
+                        }
+                        style={{
+                          ...editButtonStyle,
+                          background: "#f5f1eb",
+                          color: "#6b5138",
+                          border: "1px solid #ddd0c1",
+                        }}
+                      >
+                        Podgląd
                       </button>
 
                       <button
