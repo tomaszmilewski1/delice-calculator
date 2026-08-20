@@ -2669,7 +2669,7 @@ export default function Recipes() {
         );
       })}
     </div>
-  )}
+   )}
 
   <h3
     style={{
@@ -2679,59 +2679,14 @@ export default function Recipes() {
   >
     Koszt receptury
   </h3>
-    </h3>
 
-    {ingredients.map((ingredient) => {
-      const product = products.find(
-        (item) => item.id === ingredient.productId
-      );
-
-      return (
-        <div
-          key={ingredient.id}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "12px",
-            padding: "7px 0",
-            fontSize: "13px",
-          }}
-        >
-          <span>
-            <strong>
-              {product?.name ?? "Nieznany produkt"}
-            </strong>{" "}
-            — {ingredient.quantity} {ingredient.unit}
-          </span>
-
-          <strong>
-            {formatMoney(
-              product
-                ? calculateIngredientCost(
-                    product,
-                    ingredient.quantity,
-                    ingredient.unit
-                  )
-                : 0
-            )}
-          </strong>
-        </div>
-      );
-    })}
-  </div>
-)}
-                <h3>
-                  Koszt receptury
-                </h3>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: "8px",
-                  }}
-                >
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      marginBottom: "8px",
+    }}
+  >
                   <span>Koszt produktów</span>
                   <strong>
                     {formatMoney(
