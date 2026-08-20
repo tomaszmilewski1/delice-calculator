@@ -36,6 +36,8 @@ type RecipeIngredient = {
   product_id: string;
   quantity: number;
   unit: string;
+  ingredient_cost: number | null;
+  created_at: string;
 };
 
 type IngredientRow = {
@@ -142,6 +144,36 @@ export default function Recipes() {
     }));
   }
 
+  function parseNumber(value: string) {
+    if (!value.trim()) {
+      return 0;
+    }
+
+    const number = Number(value.replace(",", "."));
+
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  function parseNullableNumber(value: string): number | null {
+    if (!value.trim()) {
+      return null;
+    }
+
+    const number = Number(value.replace(",", "."));
+
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function formatMoney(value: number | null | undefined) {
+    if (value === null || value === undefined) {
+      return "—";
+    }
+
+    return `${Number(value)
+      .toFixed(2)
+      .replace(".", ",")} zł`;
+  }
+
   function addIngredient() {
     const firstAvailableProduct = products[0];
 
@@ -194,73 +226,43 @@ export default function Recipes() {
   }
 
   function getProduct(productId: string) {
-    return products.find(
-      (product) => product.id === productId
-    );
+    return products.find((product) => product.id === productId);
   }
 
-  function parseNumber(value: string) {
-    if (!value.trim()) {
-      return 0;
-    }
-
-    const number = Number(
-      value.replace(",", ".")
-    );
-
-    return Number.isFinite(number) ? number : 0;
-  }
-
-  function parseNullableNumber(
-    value: string
-  ): number | null {
-    if (!value.trim()) {
-      return null;
-    }
-
-    const number = Number(
-      value.replace(",", ".")
-    );
-
-    return Number.isFinite(number)
-      ? number
-      : null;
-  }
-
-  function getIngredientCost(
-    ingredient: IngredientRow
-  ) {
+  function getIngredientCost(ingredient: IngredientRow) {
     const product = getProduct(ingredient.productId);
 
     if (!product) {
       return 0;
     }
 
-    const quantity = Number(
-      ingredient.quantity.replace(",", ".")
-    );
+    const quantity = parseNumber(ingredient.quantity);
 
     if (
-      !Number.isFinite(quantity) ||
       quantity <= 0 ||
+      !Number.isFinite(quantity) ||
       Number(product.package_quantity) <= 0
     ) {
       return 0;
     }
 
-    return (
-      quantity *
-      (Number(product.package_price) /
-        Number(product.package_quantity))
-    );
+    const packageQuantity = Number(product.package_quantity);
+    const packagePrice = Number(product.package_price);
+
+    if (
+      !Number.isFinite(packageQuantity) ||
+      !Number.isFinite(packagePrice)
+    ) {
+      return 0;
+    }
+
+    return quantity * (packagePrice / packageQuantity);
   }
 
   const ingredientsCost = useMemo(() => {
-    return ingredients.reduce(
-      (sum, ingredient) =>
-        sum + getIngredientCost(ingredient),
-      0
-    );
+    return ingredients.reduce((sum, ingredient) => {
+      return sum + getIngredientCost(ingredient);
+    }, 0);
   }, [ingredients, products]);
 
   const additionalCosts = useMemo(() => {
@@ -287,76 +289,14 @@ export default function Recipes() {
     return totalCost * (1 + margin / 100);
   }, [totalCost, form.marginPercent]);
 
-  function formatMoney(value: number | null) {
-    if (value === null || value === undefined) {
-      return "—";
-    }
-
-    return `${Number(value)
-      .toFixed(2)
-      .replace(".", ",")} zł`;
-  }
-
-  function startEditing(recipe: Recipe) {
-    setEditingId(recipe.id);
-
-    setForm({
-      name: recipe.name ?? "",
-      description: recipe.description ?? "",
-      category: recipe.category ?? "",
-      portions:
-        recipe.portions !== null
-          ? String(recipe.portions).replace(".", ",")
-          : "",
-      diameterCm:
-        recipe.diameter_cm !== null
-          ? String(recipe.diameter_cm).replace(".", ",")
-          : "",
-      heightCm:
-        recipe.height_cm !== null
-          ? String(recipe.height_cm).replace(".", ",")
-          : "",
-      laborCost:
-        recipe.labor_cost !== null
-          ? String(recipe.labor_cost).replace(".", ",")
-          : "",
-      energyCost:
-        recipe.energy_cost !== null
-          ? String(recipe.energy_cost).replace(".", ",")
-          : "",
-      packagingCost:
-        recipe.packaging_cost !== null
-          ? String(recipe.packaging_cost).replace(".", ",")
-          : "",
-      marginPercent:
-        recipe.margin_percent !== null
-          ? String(recipe.margin_percent).replace(".", ",")
-          : "",
-      active: recipe.active,
-    });
-
-    loadRecipeIngredients(recipe.id);
-
-    setError("");
-    setSuccess("");
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  }
-
-  async function loadRecipeIngredients(
-    recipeId: string
-  ) {
-    const { data, error: ingredientsError } =
-      await supabase
-        .from("recipe_ingredients")
-        .select("*")
-        .eq("recipe_id", recipeId)
-        .order("created_at", {
-          ascending: true,
-        });
+  async function loadRecipeIngredients(recipeId: string) {
+    const { data, error: ingredientsError } = await supabase
+      .from("recipe_ingredients")
+      .select("*")
+      .eq("recipe_id", recipeId)
+      .order("created_at", {
+        ascending: true,
+      });
 
     if (ingredientsError) {
       setError(
@@ -371,12 +311,67 @@ export default function Recipes() {
       rows.map((ingredient) => ({
         id: ingredient.id,
         productId: ingredient.product_id,
-        quantity: String(
-          ingredient.quantity
-        ).replace(".", ","),
+        quantity: String(ingredient.quantity).replace(".", ","),
         unit: ingredient.unit ?? "",
       }))
     );
+  }
+
+  async function startEditing(recipe: Recipe) {
+    setEditingId(recipe.id);
+
+    setForm({
+      name: recipe.name ?? "",
+      description: recipe.description ?? "",
+      category: recipe.category ?? "",
+
+      portions:
+        recipe.portions !== null
+          ? String(recipe.portions).replace(".", ",")
+          : "",
+
+      diameterCm:
+        recipe.diameter_cm !== null
+          ? String(recipe.diameter_cm).replace(".", ",")
+          : "",
+
+      heightCm:
+        recipe.height_cm !== null
+          ? String(recipe.height_cm).replace(".", ",")
+          : "",
+
+      laborCost:
+        recipe.labor_cost !== null
+          ? String(recipe.labor_cost).replace(".", ",")
+          : "",
+
+      energyCost:
+        recipe.energy_cost !== null
+          ? String(recipe.energy_cost).replace(".", ",")
+          : "",
+
+      packagingCost:
+        recipe.packaging_cost !== null
+          ? String(recipe.packaging_cost).replace(".", ",")
+          : "",
+
+      marginPercent:
+        recipe.margin_percent !== null
+          ? String(recipe.margin_percent).replace(".", ",")
+          : "",
+
+      active: recipe.active,
+    });
+
+    setError("");
+    setSuccess("");
+
+    await loadRecipeIngredients(recipe.id);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
   function cancelEditing() {
@@ -417,9 +412,7 @@ export default function Recipes() {
         return;
       }
 
-      const quantity = parseNumber(
-        ingredient.quantity
-      );
+      const quantity = parseNumber(ingredient.quantity);
 
       if (quantity <= 0) {
         setError(
@@ -429,60 +422,53 @@ export default function Recipes() {
       }
     }
 
-    const portions = parseNullableNumber(
-      form.portions
-    );
+    const portions = parseNullableNumber(form.portions);
+    const diameterCm = parseNullableNumber(form.diameterCm);
+    const heightCm = parseNullableNumber(form.heightCm);
 
-    const diameterCm = parseNullableNumber(
-      form.diameterCm
-    );
+    const laborCost = parseNumber(form.laborCost);
+    const energyCost = parseNumber(form.energyCost);
+    const packagingCost = parseNumber(form.packagingCost);
+    const marginPercent = parseNumber(form.marginPercent);
 
-    const heightCm = parseNullableNumber(
-      form.heightCm
-    );
-
-    const laborCost = parseNumber(
-      form.laborCost
-    );
-
-    const energyCost = parseNumber(
-      form.energyCost
-    );
-
-    const packagingCost = parseNumber(
-      form.packagingCost
-    );
-
-    const marginPercent = parseNumber(
-      form.marginPercent
-    );
-
-    if (
-      portions !== null &&
-      portions <= 0
-    ) {
+    if (portions !== null && portions <= 0) {
       setError(
         "Liczba porcji musi być większa od zera."
       );
       return;
     }
 
-    if (
-      diameterCm !== null &&
-      diameterCm <= 0
-    ) {
+    if (diameterCm !== null && diameterCm <= 0) {
       setError(
         "Średnica musi być większa od zera."
       );
       return;
     }
 
-    if (
-      heightCm !== null &&
-      heightCm <= 0
-    ) {
+    if (heightCm !== null && heightCm <= 0) {
       setError(
         "Wysokość musi być większa od zera."
+      );
+      return;
+    }
+
+    if (laborCost < 0) {
+      setError(
+        "Koszt pracy nie może być ujemny."
+      );
+      return;
+    }
+
+    if (energyCost < 0) {
+      setError(
+        "Koszt energii nie może być ujemny."
+      );
+      return;
+    }
+
+    if (packagingCost < 0) {
+      setError(
+        "Koszt opakowania nie może być ujemny."
       );
       return;
     }
@@ -494,28 +480,45 @@ export default function Recipes() {
       return;
     }
 
-    setSaving(true);
-
     /*
-      KOSZT RECEPTURY:
-      produkty + praca + energia + opakowanie
-    */
-
+     * Najpierw ponownie obliczamy koszt składników
+     * bezpośrednio przed zapisem.
+     */
     const calculatedIngredientsCost = ingredients.reduce(
-      (sum, ingredient) =>
-        sum + getIngredientCost(ingredient),
+      (sum, ingredient) => {
+        return sum + getIngredientCost(ingredient);
+      },
       0
     );
 
-    const calculatedAdditionalCosts =
+    /*
+     * Łączny koszt receptury:
+     *
+     * produkty
+     * + praca
+     * + energia
+     * + opakowanie
+     */
+    const calculatedTotalCost =
+      calculatedIngredientsCost +
       laborCost +
       energyCost +
       packagingCost;
 
-    const calculatedTotalCost =
-      calculatedIngredientsCost +
-      calculatedAdditionalCosts;
+    const roundedIngredientsCost = Number(
+      calculatedIngredientsCost.toFixed(2)
+    );
 
+    const roundedTotalCost = Number(
+      calculatedTotalCost.toFixed(2)
+    );
+
+    setSaving(true);
+
+    /*
+     * To jest JEDYNY obiekt recipeData.
+     * Nie dodajemy poniżej drugi raz tych samych pól.
+     */
     const recipeData = {
       name: cleanName,
       description:
@@ -527,37 +530,29 @@ export default function Recipes() {
       height_cm: heightCm,
       active: form.active,
 
-      // Łączny koszt:
-      // produkty + praca + energia + opakowanie
-      cost: Number(
-        calculatedTotalCost.toFixed(2)
-      ),
+      // Produkty + praca + energia + opakowanie
+      cost: roundedTotalCost,
 
-      labor_cost: Number(
-        laborCost.toFixed(2)
-      ),
-
-      energy_cost: Number(
-        energyCost.toFixed(2)
-      ),
-
+      labor_cost: Number(laborCost.toFixed(2)),
+      energy_cost: Number(energyCost.toFixed(2)),
       packaging_cost: Number(
         packagingCost.toFixed(2)
       ),
-
       margin_percent: Number(
         marginPercent.toFixed(2)
       ),
     };
 
-    let recipeId = editingId;
+    let recipeId: string | null = editingId;
 
+    /*
+     * EDYCJA ISTNIEJĄCEJ RECEPTURY
+     */
     if (editingId) {
-      const { error: updateError } =
-        await supabase
-          .from("recipes")
-          .update(recipeData)
-          .eq("id", editingId);
+      const { error: updateError } = await supabase
+        .from("recipes")
+        .update(recipeData)
+        .eq("id", editingId);
 
       if (updateError) {
         setError(
@@ -567,6 +562,10 @@ export default function Recipes() {
         return;
       }
 
+      /*
+       * Usuwamy stare składniki tylko z tej
+       * konkretnej receptury.
+       */
       const {
         error: deleteIngredientsError,
       } = await supabase
@@ -581,13 +580,20 @@ export default function Recipes() {
         setSaving(false);
         return;
       }
-    } else {
-      const { data, error: insertError } =
-        await supabase
-          .from("recipes")
-          .insert(recipeData)
-          .select("id")
-          .single();
+    }
+
+    /*
+     * NOWA RECEPTURA
+     */
+    else {
+      const {
+        data,
+        error: insertError,
+      } = await supabase
+        .from("recipes")
+        .insert(recipeData)
+        .select("id")
+        .single();
 
       if (insertError || !data) {
         setError(
@@ -611,14 +617,26 @@ export default function Recipes() {
       return;
     }
 
+    /*
+     * Zapisujemy składniki.
+     *
+     * ingredient_cost = koszt konkretnego składnika
+     * w tej konkretnej recepturze.
+     */
     const ingredientData = ingredients.map(
       (ingredient) => ({
         recipe_id: recipeId,
         product_id: ingredient.productId,
-        quantity: parseNumber(
-          ingredient.quantity
+        quantity: Number(
+          parseNumber(ingredient.quantity).toFixed(4)
         ),
-        unit: ingredient.unit,
+        unit:
+          ingredient.unit ||
+          getProduct(ingredient.productId)?.unit ||
+          "",
+        ingredient_cost: Number(
+          getIngredientCost(ingredient).toFixed(2)
+        ),
       })
     );
 
@@ -636,6 +654,13 @@ export default function Recipes() {
       return;
     }
 
+    /*
+     * Pobieramy ponownie dane z bazy.
+     * Dzięki temu lista pokazuje faktycznie
+     * zapisany cost, a nie tylko wartość z formularza.
+     */
+    await loadData();
+
     setSuccess(
       editingId
         ? "Receptura została zaktualizowana."
@@ -645,8 +670,6 @@ export default function Recipes() {
     setForm(emptyRecipeForm);
     setIngredients([]);
     setEditingId(null);
-
-    await loadData();
 
     setSaving(false);
   }
@@ -663,11 +686,12 @@ export default function Recipes() {
     setError("");
     setSuccess("");
 
-    const { error: ingredientsError } =
-      await supabase
-        .from("recipe_ingredients")
-        .delete()
-        .eq("recipe_id", recipe.id);
+    const {
+      error: ingredientsError,
+    } = await supabase
+      .from("recipe_ingredients")
+      .delete()
+      .eq("recipe_id", recipe.id);
 
     if (ingredientsError) {
       setError(
@@ -676,11 +700,10 @@ export default function Recipes() {
       return;
     }
 
-    const { error: recipeError } =
-      await supabase
-        .from("recipes")
-        .delete()
-        .eq("id", recipe.id);
+    const { error: recipeError } = await supabase
+      .from("recipes")
+      .delete()
+      .eq("id", recipe.id);
 
     if (recipeError) {
       setError(
@@ -704,13 +727,12 @@ export default function Recipes() {
     setError("");
     setSuccess("");
 
-    const { error: updateError } =
-      await supabase
-        .from("recipes")
-        .update({
-          active: !recipe.active,
-        })
-        .eq("id", recipe.id);
+    const { error: updateError } = await supabase
+      .from("recipes")
+      .update({
+        active: !recipe.active,
+      })
+      .eq("id", recipe.id);
 
     if (updateError) {
       setError(
@@ -741,9 +763,7 @@ export default function Recipes() {
     return Array.from(
       new Set(
         recipes
-          .map((recipe) =>
-            recipe.category?.trim()
-          )
+          .map((recipe) => recipe.category?.trim())
           .filter(
             (category): category is string =>
               Boolean(category)
@@ -773,10 +793,7 @@ export default function Recipes() {
         categoryFilter === "all" ||
         recipe.category === categoryFilter;
 
-      return (
-        matchesSearch &&
-        matchesCategory
-      );
+      return matchesSearch && matchesCategory;
     });
   }, [
     recipes,
@@ -1468,9 +1485,7 @@ export default function Recipes() {
                 type="text"
                 value={search}
                 onChange={(event) =>
-                  setSearch(
-                    event.target.value
-                  )
+                  setSearch(event.target.value)
                 }
                 placeholder="Szukaj receptury lub kategorii..."
                 style={searchInputStyle}
