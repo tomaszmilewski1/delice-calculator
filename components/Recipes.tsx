@@ -2476,7 +2476,22 @@ export default function Recipes() {
                 : editingId
                 ? "Zapisz zmiany"
                 : "+ Dodaj recepturę"}
-            </button>
+                        </button>
+
+            <div style={modalBottomActionsStyle}>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                style={{
+                  ...buttonStyle,
+                  background: "#111827",
+                  color: "#fff",
+                  border: "1px solid #111827",
+                }}
+              >
+                🖨️ Drukuj kartę receptury
+              </button>
+            </div>
           </form>
         </div>
 
