@@ -232,10 +232,7 @@ function getPortionsLabel(value: number) {
     return "porcja";
   }
 
-  if (
-    value >= 2 &&
-    value <= 4
-  ) {
+  if (value >= 2 && value <= 4) {
     return "porcje";
   }
 
@@ -322,8 +319,7 @@ export default function CakeCalculator() {
     );
 
     setIngredients(
-      (ingredientsResult.data ??
-        []) as RecipeIngredient[]
+      (ingredientsResult.data ?? []) as RecipeIngredient[]
     );
 
     setLoading(false);
@@ -348,10 +344,7 @@ export default function CakeCalculator() {
         ingredient.recipe_id ===
         selectedRecipeId
     );
-  }, [
-    ingredients,
-    selectedRecipeId,
-  ]);
+  }, [ingredients, selectedRecipeId]);
 
   function getProduct(productId: string) {
     return (
@@ -437,18 +430,14 @@ export default function CakeCalculator() {
         );
 
   /*
-   * SKALOWANIE TORTU
+   * SKALA WYMIARÓW
    *
-   * Dla tortu cylindrycznego:
+   * Objętość walca:
    *
-   * skala =
-   * (nowa średnica² × nowa wysokość)
-   * /
-   * (bazowa średnica² × bazowa wysokość)
+   * średnica² × wysokość
    *
-   * Dzięki temu receptura rośnie
-   * proporcjonalnie do rzeczywistej
-   * objętości tortu.
+   * Dzięki temu zmiana średnicy ma
+   * większy wpływ na ilość składników.
    */
 
   const dimensionScale = useMemo(() => {
@@ -485,11 +474,79 @@ export default function CakeCalculator() {
   ]);
 
   /*
-   * Jeżeli użytkownik poda liczbę porcji,
-   * dodatkowo uwzględniamy ją w wyświetlaniu
-   * liczby porcji, ale składniki są skalowane
-   * według wymiarów tortu.
+   * SKALA PORCJI
+   *
+   * Jeżeli użytkownik zmienia tylko liczbę
+   * porcji, receptura również zostaje
+   * odpowiednio przeliczona.
+   *
+   * Jeżeli zmienia zarówno wymiary,
+   * jak i porcje, bierzemy większą z
+   * dwóch informacji jako docelowy
+   * współczynnik receptury.
    */
+
+  const portionScale = useMemo(() => {
+    if (
+      !basePortions ||
+      !currentPortions ||
+      !Number.isFinite(basePortions) ||
+      !Number.isFinite(currentPortions) ||
+      basePortions <= 0 ||
+      currentPortions <= 0
+    ) {
+      return 1;
+    }
+
+    return currentPortions / basePortions;
+  }, [basePortions, currentPortions]);
+
+  /*
+   * Główna skala składników.
+   *
+   * Gdy użytkownik zmieni wymiary tortu,
+   * korzystamy ze skali objętości.
+   *
+   * Gdy użytkownik zmieni porcje ręcznie,
+   * wykorzystujemy skalę porcji.
+   *
+   * Jeżeli zmienione są oba parametry,
+   * wymiary mają pierwszeństwo, ponieważ
+   * opisują rzeczywistą wielkość tortu.
+   */
+
+  const finalScale = useMemo(() => {
+    const dimensionsChanged =
+      hasNumber(dimensionScale) &&
+      Math.abs(dimensionScale - 1) >
+        0.000001;
+
+    const portionsChanged =
+      portions.trim() !== "" &&
+      hasNumber(portionScale) &&
+      Math.abs(portionScale - 1) >
+        0.000001;
+
+    if (
+      dimensionsChanged &&
+      currentDiameter &&
+      currentHeight
+    ) {
+      return dimensionScale;
+    }
+
+    if (portionsChanged) {
+      return portionScale;
+    }
+
+    return 1;
+  }, [
+    dimensionScale,
+    portionScale,
+    portions,
+    currentDiameter,
+    currentHeight,
+  ]);
 
   const calculatedIngredients =
     useMemo<IngredientCalculation[]>(() => {
@@ -500,8 +557,8 @@ export default function CakeCalculator() {
           );
 
           const scaledQuantity =
-            ingredient.quantity *
-            dimensionScale;
+            Number(ingredient.quantity) *
+            finalScale;
 
           const cost = product
             ? calculateCost(
@@ -528,7 +585,7 @@ export default function CakeCalculator() {
     }, [
       recipeIngredients,
       products,
-      dimensionScale,
+      finalScale,
     ]);
 
   const totalCost = useMemo(() => {
@@ -542,31 +599,24 @@ export default function CakeCalculator() {
     if (
       currentPortions !== null &&
       Number.isFinite(currentPortions) &&
-      currentPortions > 0 &&
-      basePortions &&
+      currentPortions > 0
+    ) {
+      return currentPortions;
+    }
+
+    if (
+      basePortions !== null &&
+      Number.isFinite(basePortions) &&
       basePortions > 0
     ) {
-      /*
-       * Przy ręcznie zmienionych wymiarach
-       * liczba porcji jest również skalowana
-       * według objętości.
-       */
-      if (portions.trim() !== "") {
-        return currentPortions;
-      }
-
-      return (
-        basePortions *
-        dimensionScale
-      );
+      return basePortions * finalScale;
     }
 
     return 0;
   }, [
     currentPortions,
     basePortions,
-    dimensionScale,
-    portions,
+    finalScale,
   ]);
 
   const costPerPortion =
@@ -584,6 +634,10 @@ export default function CakeCalculator() {
     Number.isFinite(currentHeight) &&
     currentDiameter > 0 &&
     currentHeight > 0;
+
+  const scaleChanged =
+    Math.abs(finalScale - 1) >
+    0.0001;
 
   return (
     <section style={pageStyle}>
@@ -642,7 +696,9 @@ export default function CakeCalculator() {
               style={inputStyle}
             >
               <option value="">
-                Wybierz recepturę
+                {loading
+                  ? "Ładowanie receptur..."
+                  : "Wybierz recepturę"}
               </option>
 
               {recipes.map((recipe) => (
@@ -786,35 +842,31 @@ export default function CakeCalculator() {
                 </div>
               </div>
 
-              {hasValidDimensions &&
-                Math.abs(
-                  dimensionScale - 1
-                ) > 0.0001 && (
-                  <div
-                    style={
-                      scaleInfoStyle
-                    }
-                  >
-                    <strong>
-                      Skala receptury:{" "}
-                      {dimensionScale
-                        .toFixed(3)
-                        .replace(
-                          ".",
-                          ","
-                        )}
-                      ×
-                    </strong>
+              {scaleChanged && (
+                <div
+                  style={
+                    scaleInfoStyle
+                  }
+                >
+                  <strong>
+                    Skala receptury:{" "}
+                    {finalScale
+                      .toFixed(3)
+                      .replace(
+                        ".",
+                        ","
+                      )}
+                    ×
+                  </strong>
 
-                    <span>
-                      Ilości składników są
-                      automatycznie
-                      przeliczane dla
-                      wybranego rozmiaru
-                      tortu.
-                    </span>
-                  </div>
-                )}
+                  <span>
+                    Ilości składników zostały
+                    automatycznie przeliczone
+                    dla wybranego rozmiaru
+                    tortu.
+                  </span>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -950,6 +1002,30 @@ export default function CakeCalculator() {
                                 ingredient.unit
                               }
                             </div>
+
+                            {product && (
+                              <div
+                                style={
+                                  productInfoStyle
+                                }
+                              >
+                                Opakowanie:{" "}
+                                {formatNumber(
+                                  Number(
+                                    product.package_quantity
+                                  )
+                                )}{" "}
+                                {
+                                  product.unit
+                                }{" "}
+                                •{" "}
+                                {formatMoney(
+                                  Number(
+                                    product.package_price
+                                  )
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -1083,16 +1159,26 @@ export default function CakeCalculator() {
               explanationTextStyle
             }
           >
-            Wielkość tortu jest skalowana
-            względem średnicy i wysokości
-            zapisanej w bazowej recepturze.
-            Skalowanie uwzględnia objętość
-            tortu, dlatego średnica wpływa
-            na wynik w kwadracie.
+            Zmiana średnicy i wysokości
+            przelicza recepturę według
+            objętości tortu. Zmiana liczby
+            porcji pozwala natomiast
+            bezpośrednio zwiększyć lub
+            zmniejszyć recepturę według
+            liczby potrzebnych porcji.
           </p>
         </div>
       )}
     </section>
+  );
+}
+
+function hasNumber(
+  value: number
+) {
+  return (
+    Number.isFinite(value) &&
+    value > 0
   );
 }
 
@@ -1353,6 +1439,12 @@ const ingredientRecipeQuantityStyle = {
   marginTop: "4px",
   color: "#8a837d",
   fontSize: "12px",
+};
+
+const productInfoStyle = {
+  marginTop: "3px",
+  color: "#a09891",
+  fontSize: "11px",
 };
 
 const ingredientCalculationStyle = {
