@@ -2791,10 +2791,13 @@ export default function Recipes() {
                         </span>
 
                         <strong>
-                          {formatMoney(
-                            recipe.cost
-                          )}
-                        </strong>
+  {formatMoney(
+    Number(recipe.cost ?? 0) +
+      Number(recipe.labor_cost ?? 0) +
+      Number(recipe.energy_cost ?? 0) +
+      Number(recipe.packaging_cost ?? 0)
+  )}
+</strong>
                       </div>
 
                       <div>
