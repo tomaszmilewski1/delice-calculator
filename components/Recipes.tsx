@@ -1,35 +1,49 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { supabase } from "../lib/supabase";
 
 type Recipe = {
   id: string;
   name: string;
-  category: string | null;
   description: string | null;
-  servings: number | null;
-  notes: string | null;
-  active: boolean;
+  category: string | null;
+  portions: number | null;
+  diameter_cm: number | null;
+  height_cm: number | null;
+  active: boolean | null;
   created_at: string;
   updated_at: string;
+  user_id: string | null;
+  cost: number | null;
+  labor_cost: number | null;
+  energy_cost: number | null;
+  packaging_cost: number | null;
+  margin_percent: number | null;
 };
 
 type RecipeForm = {
   name: string;
-  category: string;
   description: string;
-  servings: string;
-  notes: string;
+  category: string;
+  portions: string;
+  diameterCm: string;
+  heightCm: string;
   active: boolean;
 };
 
 const emptyForm: RecipeForm = {
   name: "",
-  category: "",
   description: "",
-  servings: "",
-  notes: "",
+  category: "",
+  portions: "",
+  diameterCm: "",
+  heightCm: "",
   active: true,
 };
 
@@ -38,11 +52,15 @@ export default function Recipes() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [form, setForm] = useState<RecipeForm>(emptyForm);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] =
+    useState<RecipeForm>(emptyForm);
+
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] =
+    useState("all");
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -55,10 +73,13 @@ export default function Recipes() {
     setLoading(true);
     setError("");
 
-    const { data, error: recipesError } = await supabase
-      .from("recipes")
-      .select("*")
-      .order("name", { ascending: true });
+    const { data, error: recipesError } =
+      await supabase
+        .from("recipes")
+        .select("*")
+        .order("name", {
+          ascending: true,
+        });
 
     if (recipesError) {
       setError(
@@ -87,14 +108,21 @@ export default function Recipes() {
 
     setForm({
       name: recipe.name ?? "",
-      category: recipe.category ?? "",
       description: recipe.description ?? "",
-      servings:
-        recipe.servings !== null
-          ? String(recipe.servings).replace(".", ",")
+      category: recipe.category ?? "",
+      portions:
+        recipe.portions !== null
+          ? String(recipe.portions).replace(".", ",")
           : "",
-      notes: recipe.notes ?? "",
-      active: recipe.active,
+      diameterCm:
+        recipe.diameter_cm !== null
+          ? String(recipe.diameter_cm).replace(".", ",")
+          : "",
+      heightCm:
+        recipe.height_cm !== null
+          ? String(recipe.height_cm).replace(".", ",")
+          : "",
+      active: recipe.active ?? true,
     });
 
     setError("");
@@ -113,7 +141,9 @@ export default function Recipes() {
     setSuccess("");
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     setError("");
@@ -126,37 +156,80 @@ export default function Recipes() {
       return;
     }
 
-    const servingsValue =
-      form.servings.trim() === ""
+    const portionsValue =
+      form.portions.trim() === ""
         ? null
-        : Number(form.servings.replace(",", "."));
+        : Number(
+            form.portions.replace(",", ".")
+          );
+
+    const diameterValue =
+      form.diameterCm.trim() === ""
+        ? null
+        : Number(
+            form.diameterCm.replace(",", ".")
+          );
+
+    const heightValue =
+      form.heightCm.trim() === ""
+        ? null
+        : Number(
+            form.heightCm.replace(",", ".")
+          );
 
     if (
-      servingsValue !== null &&
-      (!Number.isFinite(servingsValue) || servingsValue <= 0)
+      portionsValue !== null &&
+      (!Number.isFinite(portionsValue) ||
+        portionsValue <= 0)
     ) {
       setError(
-        "Liczba porcji musi być liczbą większą od zera."
+        "Liczba porcji musi być większa od zera."
+      );
+      return;
+    }
+
+    if (
+      diameterValue !== null &&
+      (!Number.isFinite(diameterValue) ||
+        diameterValue <= 0)
+    ) {
+      setError(
+        "Średnica musi być większa od zera."
+      );
+      return;
+    }
+
+    if (
+      heightValue !== null &&
+      (!Number.isFinite(heightValue) ||
+        heightValue <= 0)
+    ) {
+      setError(
+        "Wysokość musi być większa od zera."
       );
       return;
     }
 
     const recipeData = {
       name: cleanName,
-      category: form.category.trim() || null,
-      description: form.description.trim() || null,
-      servings: servingsValue,
-      notes: form.notes.trim() || null,
+      description:
+        form.description.trim() || null,
+      category:
+        form.category.trim() || null,
+      portions: portionsValue,
+      diameter_cm: diameterValue,
+      height_cm: heightValue,
       active: form.active,
     };
 
     setSaving(true);
 
     if (editingId) {
-      const { error: updateError } = await supabase
-        .from("recipes")
-        .update(recipeData)
-        .eq("id", editingId);
+      const { error: updateError } =
+        await supabase
+          .from("recipes")
+          .update(recipeData)
+          .eq("id", editingId);
 
       if (updateError) {
         setError(
@@ -166,11 +239,14 @@ export default function Recipes() {
         return;
       }
 
-      setSuccess("Receptura została zaktualizowana.");
+      setSuccess(
+        "Receptura została zaktualizowana."
+      );
     } else {
-      const { error: insertError } = await supabase
-        .from("recipes")
-        .insert(recipeData);
+      const { error: insertError } =
+        await supabase
+          .from("recipes")
+          .insert(recipeData);
 
       if (insertError) {
         setError(
@@ -180,7 +256,9 @@ export default function Recipes() {
         return;
       }
 
-      setSuccess("Receptura została dodana.");
+      setSuccess(
+        "Receptura została dodana."
+      );
     }
 
     setForm(emptyForm);
@@ -203,10 +281,11 @@ export default function Recipes() {
     setError("");
     setSuccess("");
 
-    const { error: deleteError } = await supabase
-      .from("recipes")
-      .delete()
-      .eq("id", recipe.id);
+    const { error: deleteError } =
+      await supabase
+        .from("recipes")
+        .delete()
+        .eq("id", recipe.id);
 
     if (deleteError) {
       setError(
@@ -230,12 +309,15 @@ export default function Recipes() {
     setError("");
     setSuccess("");
 
-    const { error: updateError } = await supabase
-      .from("recipes")
-      .update({
-        active: !recipe.active,
-      })
-      .eq("id", recipe.id);
+    const newActive = !(recipe.active ?? false);
+
+    const { error: updateError } =
+      await supabase
+        .from("recipes")
+        .update({
+          active: newActive,
+        })
+        .eq("id", recipe.id);
 
     if (updateError) {
       setError(
@@ -249,21 +331,26 @@ export default function Recipes() {
         item.id === recipe.id
           ? {
               ...item,
-              active: !item.active,
+              active: newActive,
             }
           : item
       )
     );
 
     setSuccess(
-      recipe.active
-        ? `Receptura "${recipe.name}" została wyłączona.`
-        : `Receptura "${recipe.name}" została aktywowana.`
+      newActive
+        ? `Receptura "${recipe.name}" została aktywowana.`
+        : `Receptura "${recipe.name}" została wyłączona.`
     );
   }
 
-  function formatServings(value: number | null) {
-    if (value === null || value === undefined) {
+  function formatNumber(
+    value: number | null
+  ) {
+    if (
+      value === null ||
+      value === undefined
+    ) {
       return "—";
     }
 
@@ -272,16 +359,35 @@ export default function Recipes() {
       .replace(".", ",");
   }
 
+  function formatPrice(
+    value: number | null
+  ) {
+    if (
+      value === null ||
+      value === undefined
+    ) {
+      return "—";
+    }
+
+    return `${Number(value)
+      .toFixed(2)
+      .replace(".", ",")} zł`;
+  }
+
   const categories = useMemo(() => {
     const uniqueCategories = recipes
-      .map((recipe) => recipe.category?.trim())
+      .map((recipe) =>
+        recipe.category?.trim()
+      )
       .filter(
         (category): category is string =>
           Boolean(category)
       );
 
-    return Array.from(new Set(uniqueCategories)).sort(
-      (a, b) => a.localeCompare(b, "pl")
+    return Array.from(
+      new Set(uniqueCategories)
+    ).sort((a, b) =>
+      a.localeCompare(b, "pl")
     );
   }, [recipes]);
 
@@ -298,18 +404,22 @@ export default function Recipes() {
           .includes(cleanSearch) ||
         (recipe.category ?? "")
           .toLocaleLowerCase("pl")
-          .includes(cleanSearch) ||
-        (recipe.description ?? "")
-          .toLocaleLowerCase("pl")
           .includes(cleanSearch);
 
       const matchesCategory =
         categoryFilter === "all" ||
         recipe.category === categoryFilter;
 
-      return matchesSearch && matchesCategory;
+      return (
+        matchesSearch &&
+        matchesCategory
+      );
     });
-  }, [recipes, search, categoryFilter]);
+  }, [
+    recipes,
+    search,
+    categoryFilter,
+  ]);
 
   return (
     <section style={pageStyle}>
@@ -324,8 +434,9 @@ export default function Recipes() {
           </h2>
 
           <p style={subtitleStyle}>
-            Twórz receptury, zarządzaj nimi i przygotuj
-            bazę do automatycznego wyliczania kosztów tortów.
+            Twórz receptury tortów i przygotowuj
+            ich kalkulację na podstawie produktów
+            zapisanych w bazie.
           </p>
         </div>
 
@@ -333,7 +444,8 @@ export default function Recipes() {
           {recipes.length}{" "}
           {recipes.length === 1
             ? "receptura"
-            : recipes.length >= 2 && recipes.length <= 4
+            : recipes.length >= 2 &&
+              recipes.length <= 4
             ? "receptury"
             : "receptur"}
         </div>
@@ -377,7 +489,10 @@ export default function Recipes() {
                 type="text"
                 value={form.name}
                 onChange={(event) =>
-                  updateForm("name", event.target.value)
+                  updateForm(
+                    "name",
+                    event.target.value
+                  )
                 }
                 placeholder="np. Biszkopt waniliowy"
                 disabled={saving}
@@ -405,25 +520,97 @@ export default function Recipes() {
               />
             </label>
 
+            <div style={twoColumnStyle}>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
+                  Liczba porcji
+                </span>
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.portions}
+                  onChange={(event) =>
+                    updateForm(
+                      "portions",
+                      event.target.value
+                    )
+                  }
+                  placeholder="np. 12"
+                  disabled={saving}
+                  style={inputStyle}
+                />
+              </label>
+
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>
+                  Średnica
+                </span>
+
+                <div
+                  style={
+                    unitInputWrapperStyle
+                  }
+                >
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={form.diameterCm}
+                    onChange={(event) =>
+                      updateForm(
+                        "diameterCm",
+                        event.target.value
+                      )
+                    }
+                    placeholder="np. 20"
+                    disabled={saving}
+                    style={
+                      unitInputStyle
+                    }
+                  />
+
+                  <span
+                    style={unitLabelStyle}
+                  >
+                    cm
+                  </span>
+                </div>
+              </label>
+            </div>
+
             <label style={labelStyle}>
               <span style={labelTextStyle}>
-                Liczba porcji
+                Wysokość
               </span>
 
-              <input
-                type="text"
-                inputMode="decimal"
-                value={form.servings}
-                onChange={(event) =>
-                  updateForm(
-                    "servings",
-                    event.target.value
-                  )
+              <div
+                style={
+                  unitInputWrapperStyle
                 }
-                placeholder="np. 10"
-                disabled={saving}
-                style={inputStyle}
-              />
+              >
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.heightCm}
+                  onChange={(event) =>
+                    updateForm(
+                      "heightCm",
+                      event.target.value
+                    )
+                  }
+                  placeholder="np. 10"
+                  disabled={saving}
+                  style={
+                    unitInputStyle
+                  }
+                />
+
+                <span
+                  style={unitLabelStyle}
+                >
+                  cm
+                </span>
+              </div>
             </label>
 
             <label style={labelStyle}>
@@ -439,31 +626,16 @@ export default function Recipes() {
                     event.target.value
                   )
                 }
-                placeholder="Krótki opis receptury"
+                placeholder="Opis receptury"
                 disabled={saving}
-                rows={3}
+                rows={4}
                 style={textareaStyle}
               />
             </label>
 
-            <label style={labelStyle}>
-              <span style={labelTextStyle}>
-                Uwagi
-              </span>
-
-              <textarea
-                value={form.notes}
-                onChange={(event) =>
-                  updateForm("notes", event.target.value)
-                }
-                placeholder="Opcjonalne informacje"
-                disabled={saving}
-                rows={3}
-                style={textareaStyle}
-              />
-            </label>
-
-            <label style={checkboxLabelStyle}>
+            <label
+              style={checkboxLabelStyle}
+            >
               <input
                 type="checkbox"
                 checked={form.active}
@@ -536,8 +708,14 @@ export default function Recipes() {
           </div>
 
           <div style={filtersStyle}>
-            <div style={searchWrapperStyle}>
-              <span style={searchIconStyle}>
+            <div
+              style={
+                searchWrapperStyle
+              }
+            >
+              <span
+                style={searchIconStyle}
+              >
                 🔍
               </span>
 
@@ -545,17 +723,23 @@ export default function Recipes() {
                 type="text"
                 value={search}
                 onChange={(event) =>
-                  setSearch(event.target.value)
+                  setSearch(
+                    event.target.value
+                  )
                 }
                 placeholder="Szukaj receptury lub kategorii..."
-                style={searchInputStyle}
+                style={
+                  searchInputStyle
+                }
               />
             </div>
 
             <select
               value={categoryFilter}
               onChange={(event) =>
-                setCategoryFilter(event.target.value)
+                setCategoryFilter(
+                  event.target.value
+                )
               }
               style={filterSelectStyle}
             >
@@ -563,44 +747,54 @@ export default function Recipes() {
                 Wszystkie kategorie
               </option>
 
-              {categories.map((category) => (
-                <option
-                  key={category}
-                  value={category}
-                >
-                  {category}
-                </option>
-              ))}
+              {categories.map(
+                (category) => (
+                  <option
+                    key={category}
+                    value={category}
+                  >
+                    {category}
+                  </option>
+                )
+              )}
             </select>
 
             {(search !== "" ||
-              categoryFilter !== "all") && (
+              categoryFilter !==
+                "all") && (
               <button
                 type="button"
                 onClick={() => {
                   setSearch("");
-                  setCategoryFilter("all");
+                  setCategoryFilter(
+                    "all"
+                  );
                 }}
-                style={clearFilterButtonStyle}
+                style={
+                  clearFilterButtonStyle
+                }
               >
                 Wyczyść
               </button>
             )}
           </div>
 
-          {!loading && recipes.length > 0 && (
-            <div style={resultsInfoStyle}>
-              Wyświetlono{" "}
-              <strong>
-                {filteredRecipes.length}
-              </strong>{" "}
-              z{" "}
-              <strong>
-                {recipes.length}
-              </strong>{" "}
-              receptur
-            </div>
-          )}
+          {!loading &&
+            recipes.length > 0 && (
+              <div
+                style={resultsInfoStyle}
+              >
+                Wyświetlono{" "}
+                <strong>
+                  {filteredRecipes.length}
+                </strong>{" "}
+                z{" "}
+                <strong>
+                  {recipes.length}
+                </strong>{" "}
+                receptur
+              </div>
+            )}
 
           {loading ? (
             <div style={emptyStyle}>
@@ -608,7 +802,9 @@ export default function Recipes() {
             </div>
           ) : recipes.length === 0 ? (
             <div style={emptyStyle}>
-              <div style={emptyIconStyle}>
+              <div
+                style={emptyIconStyle}
+              >
                 R
               </div>
 
@@ -616,13 +812,18 @@ export default function Recipes() {
                 Brak receptur
               </strong>
 
-              <p style={emptyTextStyle}>
+              <p
+                style={emptyTextStyle}
+              >
                 Dodaj pierwszą recepturę za pomocą formularza.
               </p>
             </div>
-          ) : filteredRecipes.length === 0 ? (
+          ) : filteredRecipes.length ===
+            0 ? (
             <div style={emptyStyle}>
-              <div style={emptyIconStyle}>
+              <div
+                style={emptyIconStyle}
+              >
                 ?
               </div>
 
@@ -630,108 +831,158 @@ export default function Recipes() {
                 Nie znaleziono receptur
               </strong>
 
-              <p style={emptyTextStyle}>
+              <p
+                style={emptyTextStyle}
+              >
                 Zmień wyszukiwanie lub wybierz inną kategorię.
               </p>
             </div>
           ) : (
-            <div style={recipesListStyle}>
-              {filteredRecipes.map((recipe) => (
-                <div
-                  key={recipe.id}
-                  style={recipeRowStyle}
-                >
-                  <div style={recipeMainStyle}>
-                    <div style={recipeIconStyle}>
-                      {recipe.name
-                        .charAt(0)
-                        .toUpperCase()}
-                    </div>
-
-                    <div>
-                      <div style={recipeNameStyle}>
-                        {recipe.name}
+            <div
+              style={
+                recipesListStyle
+              }
+            >
+              {filteredRecipes.map(
+                (recipe) => (
+                  <div
+                    key={recipe.id}
+                    style={
+                      recipeRowStyle
+                    }
+                  >
+                    <div
+                      style={
+                        recipeMainStyle
+                      }
+                    >
+                      <div
+                        style={
+                          recipeIconStyle
+                        }
+                      >
+                        {recipe.name
+                          .charAt(0)
+                          .toUpperCase()}
                       </div>
 
-                      <div style={recipeMetaStyle}>
-                        {recipe.category ||
-                          "Bez kategorii"}
-
-                        {recipe.servings !== null
-                          ? ` • ${formatServings(
-                              recipe.servings
-                            )} porcji`
-                          : ""}
-                      </div>
-
-                      {recipe.description && (
-                        <div style={descriptionStyle}>
-                          {recipe.description}
+                      <div>
+                        <div
+                          style={
+                            recipeNameStyle
+                          }
+                        >
+                          {recipe.name}
                         </div>
-                      )}
+
+                        <div
+                          style={
+                            recipeMetaStyle
+                          }
+                        >
+                          {recipe.category ||
+                            "Bez kategorii"}
+
+                          {recipe.portions !==
+                            null &&
+                            ` • ${formatNumber(
+                              recipe.portions
+                            )} porcji`}
+
+                          {recipe.diameter_cm !==
+                            null &&
+                            ` • Ø ${formatNumber(
+                              recipe.diameter_cm
+                            )} cm`}
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div style={recipeDetailsStyle}>
-                    <div>
-                      <span style={detailLabelStyle}>
-                        Porcje
-                      </span>
+                    <div
+                      style={
+                        recipeDetailsStyle
+                      }
+                    >
+                      <div>
+                        <span
+                          style={
+                            detailLabelStyle
+                          }
+                        >
+                          Koszt
+                        </span>
 
-                      <strong>
-                        {formatServings(
-                          recipe.servings
-                        )}
-                      </strong>
+                        <strong>
+                          {formatPrice(
+                            recipe.cost
+                          )}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span
+                          style={
+                            detailLabelStyle
+                          }
+                        >
+                          Status
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleActive(
+                              recipe
+                            )
+                          }
+                          style={{
+                            ...statusStyle,
+                            ...(recipe.active
+                              ? activeStatusStyle
+                              : inactiveStatusStyle),
+                          }}
+                        >
+                          {recipe.active
+                            ? "Aktywna"
+                            : "Nieaktywna"}
+                        </button>
+                      </div>
                     </div>
 
-                    <div>
-                      <span style={detailLabelStyle}>
-                        Status
-                      </span>
+                    <div
+                      style={actionsStyle}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startEditing(
+                            recipe
+                          )
+                        }
+                        style={
+                          editButtonStyle
+                        }
+                      >
+                        Edytuj
+                      </button>
 
                       <button
                         type="button"
                         onClick={() =>
-                          toggleActive(recipe)
+                          deleteRecipe(
+                            recipe
+                          )
                         }
-                        style={{
-                          ...statusStyle,
-                          ...(recipe.active
-                            ? activeStatusStyle
-                            : inactiveStatusStyle),
-                        }}
+                        style={
+                          deleteButtonStyle
+                        }
                       >
-                        {recipe.active
-                          ? "Aktywna"
-                          : "Nieaktywna"}
+                        Usuń
                       </button>
                     </div>
                   </div>
-
-                  <div style={actionsStyle}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        startEditing(recipe)
-                      }
-                      style={editButtonStyle}
-                    >
-                      Edytuj
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        deleteRecipe(recipe)
-                      }
-                      style={deleteButtonStyle}
-                    >
-                      Usuń
-                    </button>
-                  </div>
-                </div>
-              ))}
+                )
+              )}
             </div>
           )}
         </div>
@@ -853,6 +1104,30 @@ const inputStyle = {
   outline: "none",
 };
 
+const twoColumnStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "12px",
+};
+
+const unitInputWrapperStyle = {
+  position: "relative" as const,
+};
+
+const unitInputStyle = {
+  ...inputStyle,
+  paddingRight: "38px",
+};
+
+const unitLabelStyle = {
+  position: "absolute" as const,
+  right: "12px",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "#8a837d",
+  fontSize: "13px",
+};
+
 const textareaStyle = {
   ...inputStyle,
   resize: "vertical" as const,
@@ -878,6 +1153,7 @@ const buttonStyle = {
   color: "#ffffff",
   fontSize: "14px",
   fontWeight: 600,
+  cursor: "pointer",
 };
 
 const cancelButtonStyle = {
@@ -1031,10 +1307,9 @@ const recipeRowStyle = {
 
 const recipeMainStyle = {
   display: "flex",
-  alignItems: "flex-start",
+  alignItems: "center",
   gap: "12px",
   minWidth: "220px",
-  flex: 1,
 };
 
 const recipeIconStyle = {
@@ -1060,13 +1335,6 @@ const recipeMetaStyle = {
   marginTop: "4px",
   color: "#8a837d",
   fontSize: "12px",
-};
-
-const descriptionStyle = {
-  marginTop: "7px",
-  color: "#716b65",
-  fontSize: "12px",
-  lineHeight: 1.4,
 };
 
 const recipeDetailsStyle = {
