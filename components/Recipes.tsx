@@ -65,6 +65,14 @@ type RecipeForm = {
   active: boolean;
 };
 
+type RecipeCardIngredient = {
+  id: string;
+  product: Product | null;
+  quantity: number;
+  unit: string;
+  cost: number;
+};
+
 const emptyRecipeForm: RecipeForm = {
   name: "",
   description: "",
@@ -106,6 +114,18 @@ export default function Recipes() {
     useState("");
 
   const [success, setSuccess] =
+    useState("");
+
+  const [previewRecipe, setPreviewRecipe] =
+    useState<Recipe | null>(null);
+
+  const [previewIngredients, setPreviewIngredients] =
+    useState<RecipeCardIngredient[]>([]);
+
+  const [previewLoading, setPreviewLoading] =
+    useState(false);
+
+  const [previewError, setPreviewError] =
     useState("");
 
   useEffect(() => {
@@ -300,24 +320,6 @@ export default function Recipes() {
     );
   }
 
-  /*
-   * =====================================================
-   * KOSZT JEDNEGO SKŁADNIKA
-   *
-   * Przykład:
-   *
-   * produkt:
-   * package_quantity = 500
-   * package_price = 5 zł
-   *
-   * ilość receptury:
-   * 1000 g
-   *
-   * koszt:
-   * 1000 * (5 / 500) = 10 zł
-   * =====================================================
-   */
-
   function calculateIngredientCost(
     ingredient: IngredientRow
   ): number {
@@ -360,12 +362,6 @@ export default function Recipes() {
       cost.toFixed(2)
     );
   }
-
-  /*
-   * =====================================================
-   * KOSZT WSZYSTKICH PRODUKTÓW
-   * =====================================================
-   */
 
   const ingredientsCost = useMemo(() => {
     let total = 0;
@@ -446,12 +442,6 @@ export default function Recipes() {
     marginPercent,
   ]);
 
-  /*
-   * =====================================================
-   * POBIERANIE SKŁADNIKÓW RECEPTURY
-   * =====================================================
-   */
-
   async function loadRecipeIngredients(
     recipeId: string
   ) {
@@ -496,9 +486,193 @@ export default function Recipes() {
 
   /*
    * =====================================================
-   * EDYCJA
+   * PEŁNA KARTA RECEPTURY
    * =====================================================
    */
+
+  async function openRecipePreview(
+    recipe: Recipe
+  ) {
+    setPreviewRecipe(recipe);
+    setPreviewIngredients([]);
+    setPreviewError("");
+    setPreviewLoading(true);
+
+    const {
+      data,
+      error: ingredientsError,
+    } = await supabase
+      .from("recipe_ingredients")
+      .select("*")
+      .eq(
+        "recipe_id",
+        recipe.id
+      )
+      .order("created_at", {
+        ascending: true,
+      });
+
+    if (ingredientsError) {
+      setPreviewError(
+        `Nie udało się pobrać składników receptury: ${ingredientsError.message}`
+      );
+
+      setPreviewLoading(false);
+      return;
+    }
+
+    const rows =
+      (data ?? []) as RecipeIngredient[];
+
+    const mappedIngredients =
+      rows.map((ingredient) => {
+        const product =
+          products.find(
+            (item) =>
+              item.id ===
+              ingredient.product_id
+          ) ?? null;
+
+        const quantity =
+          Number(
+            ingredient.quantity
+          );
+
+        let cost = 0;
+
+        if (product) {
+          const packageQuantity =
+            Number(
+              product.package_quantity
+            );
+
+          const packagePrice =
+            Number(
+              product.package_price
+            );
+
+          if (
+            packageQuantity > 0 &&
+            Number.isFinite(
+              packageQuantity
+            ) &&
+            Number.isFinite(
+              packagePrice
+            )
+          ) {
+            cost =
+              quantity *
+              (
+                packagePrice /
+                packageQuantity
+              );
+          }
+        }
+
+        return {
+          id: ingredient.id,
+          product,
+          quantity,
+          unit:
+            ingredient.unit ??
+            product?.unit ??
+            "",
+          cost: Number(
+            cost.toFixed(2)
+          ),
+        };
+      });
+
+    setPreviewIngredients(
+      mappedIngredients
+    );
+
+    setPreviewLoading(false);
+  }
+
+  function closeRecipePreview() {
+    setPreviewRecipe(null);
+    setPreviewIngredients([]);
+    setPreviewError("");
+  }
+
+  const previewProductsCost =
+    useMemo(() => {
+      return Number(
+        previewIngredients
+          .reduce(
+            (sum, ingredient) =>
+              sum + ingredient.cost,
+            0
+          )
+          .toFixed(2)
+      );
+    }, [previewIngredients]);
+
+  const previewAdditionalCosts =
+    useMemo(() => {
+      if (!previewRecipe) {
+        return 0;
+      }
+
+      return Number(
+        (
+          Number(
+            previewRecipe.labor_cost ??
+            0
+          ) +
+          Number(
+            previewRecipe.energy_cost ??
+            0
+          ) +
+          Number(
+            previewRecipe.packaging_cost ??
+            0
+          )
+        ).toFixed(2)
+      );
+    }, [previewRecipe]);
+
+  const previewCalculatedTotal =
+    useMemo(() => {
+      return Number(
+        (
+          previewProductsCost +
+          previewAdditionalCosts
+        ).toFixed(2)
+      );
+    }, [
+      previewProductsCost,
+      previewAdditionalCosts,
+    ]);
+
+  const previewMargin =
+    Number(
+      previewRecipe?.margin_percent ??
+        0
+    );
+
+  const previewSalePrice =
+    useMemo(() => {
+      if (!previewRecipe) {
+        return 0;
+      }
+
+      return Number(
+        (
+          previewCalculatedTotal *
+          (
+            1 +
+            previewMargin /
+              100
+          )
+        ).toFixed(2)
+      );
+    }, [
+      previewRecipe,
+      previewCalculatedTotal,
+      previewMargin,
+    ]);
 
   async function startEditing(
     recipe: Recipe
@@ -586,12 +760,6 @@ export default function Recipes() {
     setSuccess("");
   }
 
-  /*
-   * =====================================================
-   * ZAPIS RECEPTURY
-   * =====================================================
-   */
-
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -618,10 +786,6 @@ export default function Recipes() {
 
       return;
     }
-
-    /*
-     * Sprawdzenie składników
-     */
 
     for (
       const ingredient of ingredients
@@ -683,10 +847,6 @@ export default function Recipes() {
         form.marginPercent
       );
 
-    /*
-     * Walidacja wartości
-     */
-
     if (
       portions !== null &&
       portions <= 0
@@ -741,18 +901,6 @@ export default function Recipes() {
 
       return;
     }
-
-    /*
-     * =====================================================
-     * NAJWAŻNIEJSZA POPRAWKA
-     *
-     * Koszt produktów liczymy TUTAJ,
-     * bez korzystania z wartości useMemo.
-     *
-     * Dzięki temu przy zapisie zawsze używamy
-     * AKTUALNYCH składników z formularza.
-     * =====================================================
-     */
 
     let calculatedProductsCost =
       0;
@@ -840,21 +988,10 @@ export default function Recipes() {
         ingredientCost;
     }
 
-    /*
-     * Zaokrąglamy koszt produktów
-     * dopiero po zsumowaniu wszystkich składników.
-     */
-
     calculatedProductsCost =
       Number(
         calculatedProductsCost.toFixed(2)
       );
-
-    /*
-     * =====================================================
-     * KOSZTY DODATKOWE
-     * =====================================================
-     */
 
     const calculatedAdditionalCosts =
       Number(
@@ -865,14 +1002,6 @@ export default function Recipes() {
         ).toFixed(2)
       );
 
-    /*
-     * =====================================================
-     * PEŁNY KOSZT RECEPTURY
-     *
-     * PRODUKTY + PRACA + ENERGIA + OPAKOWANIE
-     * =====================================================
-     */
-
     const calculatedTotalCost =
       Number(
         (
@@ -880,10 +1009,6 @@ export default function Recipes() {
           calculatedAdditionalCosts
         ).toFixed(2)
       );
-
-    /*
-     * Cena sprzedaży
-     */
 
     const calculatedSalePrice =
       Number(
@@ -896,20 +1021,6 @@ export default function Recipes() {
           )
         ).toFixed(2)
       );
-
-    /*
-     * =====================================================
-     * DANE DO recipes
-     *
-     * cost = PEŁNY KOSZT RECEPTURY
-     *
-     * NIE:
-     * cost = koszt produktów
-     *
-     * TAK:
-     * cost = produkty + praca + energia + opakowanie
-     * =====================================================
-     */
 
     const recipeData = {
       name: cleanName,
@@ -957,10 +1068,6 @@ export default function Recipes() {
         ),
     };
 
-    /*
-     * DEBUG — wartości przed zapisem
-     */
-
     console.log(
       "=== ZAPIS RECEPTURY ==="
     );
@@ -1000,22 +1107,11 @@ export default function Recipes() {
       calculatedSalePrice
     );
 
-    console.log(
-      "recipeData:",
-      recipeData
-    );
-
     setSaving(true);
 
     let recipeId:
       | string
       | null = editingId;
-
-    /*
-     * =====================================================
-     * EDYCJA
-     * =====================================================
-     */
 
     if (editingId) {
       const {
@@ -1037,10 +1133,6 @@ export default function Recipes() {
 
         return;
       }
-
-      /*
-       * Usuwamy stare składniki.
-       */
 
       const {
         error:
@@ -1064,15 +1156,7 @@ export default function Recipes() {
 
         return;
       }
-    }
-
-    /*
-     * =====================================================
-     * NOWA RECEPTURA
-     * =====================================================
-     */
-
-    else {
+    } else {
       const {
         data,
         error: insertError,
@@ -1113,12 +1197,6 @@ export default function Recipes() {
 
       return;
     }
-
-    /*
-     * =====================================================
-     * ZAPIS SKŁADNIKÓW
-     * =====================================================
-     */
 
     const ingredientData =
       ingredients.map(
@@ -1164,16 +1242,6 @@ export default function Recipes() {
       return;
     }
 
-    /*
-     * =====================================================
-     * WERYFIKACJA ZAPISU
-     *
-     * Pobieramy recepturę jeszcze raz z Supabase.
-     * Dzięki temu od razu wiemy, co faktycznie
-     * zostało zapisane w bazie.
-     * =====================================================
-     */
-
     const {
       data: savedRecipe,
       error:
@@ -1199,19 +1267,6 @@ export default function Recipes() {
       return;
     }
 
-    console.log(
-      "=== ZAPISANO W SUPABASE ==="
-    );
-
-    console.log(
-      savedRecipe
-    );
-
-    /*
-     * Jeżeli Supabase zwróci inną wartość cost
-     * niż ta, którą wysłaliśmy, pokazujemy błąd.
-     */
-
     if (
       Number(
         savedRecipe.cost
@@ -1232,12 +1287,6 @@ export default function Recipes() {
 
       return;
     }
-
-    /*
-     * =====================================================
-     * SUKCES
-     * =====================================================
-     */
 
     setSuccess(
       editingId
@@ -1261,12 +1310,6 @@ export default function Recipes() {
 
     setSaving(false);
   }
-
-  /*
-   * =====================================================
-   * USUWANIE
-   * =====================================================
-   */
 
   async function deleteRecipe(
     recipe: Recipe
@@ -1332,18 +1375,19 @@ export default function Recipes() {
       cancelEditing();
     }
 
+    if (
+      previewRecipe?.id ===
+      recipe.id
+    ) {
+      closeRecipePreview();
+    }
+
     setSuccess(
       `Receptura "${recipe.name}" została usunięta.`
     );
 
     await loadData();
   }
-
-  /*
-   * =====================================================
-   * AKTYWACJA / DEZAKTYWACJA
-   * =====================================================
-   */
 
   async function toggleActive(
     recipe: Recipe
@@ -1391,18 +1435,23 @@ export default function Recipes() {
         )
     );
 
+    if (
+      previewRecipe?.id ===
+      recipe.id
+    ) {
+      setPreviewRecipe({
+        ...recipe,
+        active:
+          newStatus,
+      });
+    }
+
     setSuccess(
       newStatus
         ? `Receptura "${recipe.name}" została aktywowana.`
         : `Receptura "${recipe.name}" została wyłączona.`
     );
   }
-
-  /*
-   * =====================================================
-   * KATEGORIE
-   * =====================================================
-   */
 
   const categories =
     useMemo(() => {
@@ -1428,12 +1477,6 @@ export default function Recipes() {
           )
       );
     }, [recipes]);
-
-  /*
-   * =====================================================
-   * FILTROWANIE
-   * =====================================================
-   */
 
   const filteredRecipes =
     useMemo(() => {
@@ -1485,581 +1528,1307 @@ export default function Recipes() {
     ]);
 
   return (
-    <section
-      style={pageStyle}
-    >
-      <div
-        style={headerStyle}
-      >
-        <div>
-          <div
-            style={
-              eyebrowStyle
-            }
-          >
-            BAZA RECEPTUR
-          </div>
-
-          <h2
-            style={titleStyle}
-          >
-            Receptury
-          </h2>
-
-          <p
-            style={
-              subtitleStyle
-            }
-          >
-            Twórz receptury z produktów
-            zapisanych w bazie i automatycznie
-            wyliczaj ich koszt.
-          </p>
-        </div>
-
-        <div
-          style={
-            countBadgeStyle
-          }
-        >
-          {recipes.length}{" "}
-          {recipes.length ===
-          1
-            ? "receptura"
-            : recipes.length >=
-                2 &&
-              recipes.length <=
-                4
-            ? "receptury"
-            : "receptur"}
-        </div>
-      </div>
-
-      <div
-        style={
-          contentGridStyle
-        }
+    <>
+      <section
+        style={pageStyle}
       >
         <div
-          style={
-            formCardStyle
-          }
+          style={headerStyle}
         >
-          <div
-            style={
-              cardHeaderStyle
-            }
-          >
-            <div>
-              <h3
-                style={
-                  cardTitleStyle
-                }
-              >
-                {editingId
-                  ? "Edytuj recepturę"
-                  : "Dodaj recepturę"}
-              </h3>
-
-              <p
-                style={
-                  cardSubtitleStyle
-                }
-              >
-                {editingId
-                  ? "Zmień dane i składniki receptury."
-                  : "Wybierz produkty z istniejącej bazy."}
-              </p>
-            </div>
-
-            {editingId && (
-              <button
-                type="button"
-                onClick={
-                  cancelEditing
-                }
-                style={
-                  cancelButtonStyle
-                }
-              >
-                Anuluj
-              </button>
-            )}
-          </div>
-
-          <form
-            onSubmit={
-              handleSubmit
-            }
-          >
-            <label
-              style={labelStyle}
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
-                Nazwa receptury *
-              </span>
-
-              <input
-                type="text"
-                value={
-                  form.name
-                }
-                onChange={(
-                  event
-                ) =>
-                  updateForm(
-                    "name",
-                    event.target
-                      .value
-                  )
-                }
-                placeholder="np. Biszkopt waniliowy"
-                disabled={
-                  saving
-                }
-                style={
-                  inputStyle
-                }
-              />
-            </label>
-
-            <label
-              style={labelStyle}
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
-                Kategoria
-              </span>
-
-              <input
-                type="text"
-                value={
-                  form.category
-                }
-                onChange={(
-                  event
-                ) =>
-                  updateForm(
-                    "category",
-                    event.target
-                      .value
-                  )
-                }
-                placeholder="np. Biszkopty"
-                disabled={
-                  saving
-                }
-                style={
-                  inputStyle
-                }
-              />
-            </label>
-
-            <label
-              style={labelStyle}
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
-                Opis
-              </span>
-
-              <textarea
-                value={
-                  form.description
-                }
-                onChange={(
-                  event
-                ) =>
-                  updateForm(
-                    "description",
-                    event.target
-                      .value
-                  )
-                }
-                placeholder="Opcjonalny opis receptury"
-                disabled={
-                  saving
-                }
-                rows={3}
-                style={
-                  textareaStyle
-                }
-              />
-            </label>
-
+          <div>
             <div
               style={
-                twoColumnStyle
+                eyebrowStyle
               }
             >
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                <span
-                  style={
-                    labelTextStyle
-                  }
-                >
-                  Porcje
-                </span>
-
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={
-                    form.portions
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateForm(
-                      "portions",
-                      event.target
-                        .value
-                    )
-                  }
-                  placeholder="np. 12"
-                  disabled={
-                    saving
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
-              </label>
-
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                <span
-                  style={
-                    labelTextStyle
-                  }
-                >
-                  Średnica cm
-                </span>
-
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={
-                    form.diameterCm
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateForm(
-                      "diameterCm",
-                      event.target
-                        .value
-                    )
-                  }
-                  placeholder="np. 20"
-                  disabled={
-                    saving
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
-              </label>
+              BAZA RECEPTUR
             </div>
 
-            <label
-              style={labelStyle}
+            <h2
+              style={titleStyle}
             >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
-                Wysokość cm
-              </span>
+              Receptury
+            </h2>
 
-              <input
-                type="text"
-                inputMode="decimal"
-                value={
-                  form.heightCm
-                }
-                onChange={(
-                  event
-                ) =>
-                  updateForm(
-                    "heightCm",
-                    event.target
-                      .value
-                  )
-                }
-                placeholder="np. 10"
-                disabled={
-                  saving
-                }
-                style={
-                  inputStyle
-                }
-              />
-            </label>
+            <p
+              style={
+                subtitleStyle
+              }
+            >
+              Twórz receptury z produktów
+              zapisanych w bazie i automatycznie
+              wyliczaj ich koszt.
+            </p>
+          </div>
 
+          <div
+            style={
+              countBadgeStyle
+            }
+          >
+            {recipes.length}{" "}
+            {recipes.length ===
+            1
+              ? "receptura"
+              : recipes.length >=
+                  2 &&
+                recipes.length <=
+                  4
+              ? "receptury"
+              : "receptur"}
+          </div>
+        </div>
+
+        <div
+          style={
+            contentGridStyle
+          }
+        >
+          <div
+            style={
+              formCardStyle
+            }
+          >
             <div
               style={
-                sectionHeaderStyle
+                cardHeaderStyle
               }
             >
               <div>
-                <h4
+                <h3
                   style={
-                    sectionTitleStyle
+                    cardTitleStyle
                   }
                 >
-                  Składniki receptury
-                </h4>
+                  {editingId
+                    ? "Edytuj recepturę"
+                    : "Dodaj recepturę"}
+                </h3>
 
                 <p
                   style={
-                    sectionSubtitleStyle
+                    cardSubtitleStyle
                   }
                 >
-                  Wybierz produkt z bazy i podaj ilość.
+                  {editingId
+                    ? "Zmień dane i składniki receptury."
+                    : "Wybierz produkty z istniejącej bazy."}
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={
-                  addIngredient
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={
+                    cancelEditing
+                  }
+                  style={
+                    cancelButtonStyle
+                  }
+                >
+                  Anuluj
+                </button>
+              )}
+            </div>
+
+            <form
+              onSubmit={
+                handleSubmit
+              }
+            >
+              <label
+                style={labelStyle}
+              >
+                <span
+                  style={
+                    labelTextStyle
+                  }
+                >
+                  Nazwa receptury *
+                </span>
+
+                <input
+                  type="text"
+                  value={
+                    form.name
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateForm(
+                      "name",
+                      event.target
+                        .value
+                    )
+                  }
+                  placeholder="np. Biszkopt waniliowy"
+                  disabled={
+                    saving
+                  }
+                  style={
+                    inputStyle
+                  }
+                />
+              </label>
+
+              <label
+                style={labelStyle}
+              >
+                <span
+                  style={
+                    labelTextStyle
+                  }
+                >
+                  Kategoria
+                </span>
+
+                <input
+                  type="text"
+                  value={
+                    form.category
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateForm(
+                      "category",
+                      event.target
+                        .value
+                    )
+                  }
+                  placeholder="np. Biszkopty"
+                  disabled={
+                    saving
+                  }
+                  style={
+                    inputStyle
+                  }
+                />
+              </label>
+
+              <label
+                style={labelStyle}
+              >
+                <span
+                  style={
+                    labelTextStyle
+                  }
+                >
+                  Opis
+                </span>
+
+                <textarea
+                  value={
+                    form.description
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateForm(
+                      "description",
+                      event.target
+                        .value
+                    )
+                  }
+                  placeholder="Opcjonalny opis receptury"
+                  disabled={
+                    saving
+                  }
+                  rows={3}
+                  style={
+                    textareaStyle
+                  }
+                />
+              </label>
+
+              <div
+                style={
+                  twoColumnStyle
                 }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
+                  <span
+                    style={
+                      labelTextStyle
+                    }
+                  >
+                    Porcje
+                  </span>
+
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={
+                      form.portions
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateForm(
+                        "portions",
+                        event.target
+                          .value
+                      )
+                    }
+                    placeholder="np. 12"
+                    disabled={
+                      saving
+                    }
+                    style={
+                      inputStyle
+                    }
+                  />
+                </label>
+
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
+                  <span
+                    style={
+                      labelTextStyle
+                    }
+                  >
+                    Średnica cm
+                  </span>
+
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={
+                      form.diameterCm
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateForm(
+                        "diameterCm",
+                        event.target
+                          .value
+                      )
+                    }
+                    placeholder="np. 20"
+                    disabled={
+                      saving
+                    }
+                    style={
+                      inputStyle
+                    }
+                  />
+                </label>
+              </div>
+
+              <label
+                style={labelStyle}
+              >
+                <span
+                  style={
+                    labelTextStyle
+                  }
+                >
+                  Wysokość cm
+                </span>
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={
+                    form.heightCm
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateForm(
+                      "heightCm",
+                      event.target
+                        .value
+                    )
+                  }
+                  placeholder="np. 10"
+                  disabled={
+                    saving
+                  }
+                  style={
+                    inputStyle
+                  }
+                />
+              </label>
+
+              <div
+                style={
+                  sectionHeaderStyle
+                }
+              >
+                <div>
+                  <h4
+                    style={
+                      sectionTitleStyle
+                    }
+                  >
+                    Składniki receptury
+                  </h4>
+
+                  <p
+                    style={
+                      sectionSubtitleStyle
+                    }
+                  >
+                    Wybierz produkt z bazy i podaj ilość.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    addIngredient
+                  }
+                  disabled={
+                    saving ||
+                    products.length ===
+                      0
+                  }
+                  style={{
+                    ...addIngredientButtonStyle,
+                    opacity:
+                      saving ||
+                      products.length ===
+                        0
+                        ? 0.5
+                        : 1,
+                  }}
+                >
+                  + Dodaj składnik
+                </button>
+              </div>
+
+              {products.length ===
+              0 ? (
+                <div
+                  style={
+                    warningStyle
+                  }
+                >
+                  <strong>
+                    Brak aktywnych produktów
+                  </strong>
+
+                  <p
+                    style={
+                      warningTextStyle
+                    }
+                  >
+                    Najpierw dodaj produkty w module
+                    „Produkty”.
+                  </p>
+                </div>
+              ) : ingredients.length ===
+                0 ? (
+                <div
+                  style={
+                    ingredientsEmptyStyle
+                  }
+                >
+                  Nie dodano jeszcze żadnych składników.
+                </div>
+              ) : (
+                <div
+                  style={
+                    ingredientsListStyle
+                  }
+                >
+                  {ingredients.map(
+                    (
+                      ingredient,
+                      index
+                    ) => {
+                      const product =
+                        getProduct(
+                          ingredient.productId
+                        );
+
+                      const ingredientCost =
+                        calculateIngredientCost(
+                          ingredient
+                        );
+
+                      return (
+                        <div
+                          key={
+                            ingredient.id
+                          }
+                          style={
+                            ingredientRowStyle
+                          }
+                        >
+                          <div
+                            style={
+                              ingredientNumberStyle
+                            }
+                          >
+                            {index +
+                              1}
+                          </div>
+
+                          <div
+                            style={
+                              ingredientProductStyle
+                            }
+                          >
+                            <span
+                              style={
+                                smallLabelStyle
+                              }
+                            >
+                              Produkt
+                            </span>
+
+                            <select
+                              value={
+                                ingredient.productId
+                              }
+                              onChange={(
+                                event
+                              ) =>
+                                updateIngredient(
+                                  ingredient.id,
+                                  "productId",
+                                  event.target
+                                    .value
+                                )
+                              }
+                              disabled={
+                                saving
+                              }
+                              style={
+                                inputStyle
+                              }
+                            >
+                              <option value="">
+                                Wybierz produkt
+                              </option>
+
+                              {products.map(
+                                (
+                                  item
+                                ) => (
+                                  <option
+                                    key={
+                                      item.id
+                                    }
+                                    value={
+                                      item.id
+                                    }
+                                  >
+                                    {
+                                      item.name
+                                    }
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </div>
+
+                          <div
+                            style={
+                              ingredientQuantityStyle
+                            }
+                          >
+                            <span
+                              style={
+                                smallLabelStyle
+                              }
+                            >
+                              Ilość
+                            </span>
+
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={
+                                ingredient.quantity
+                              }
+                              onChange={(
+                                event
+                              ) =>
+                                updateIngredient(
+                                  ingredient.id,
+                                  "quantity",
+                                  event.target
+                                    .value
+                                )
+                              }
+                              placeholder="np. 500"
+                              disabled={
+                                saving
+                              }
+                              style={
+                                inputStyle
+                              }
+                            />
+                          </div>
+
+                          <div
+                            style={
+                              ingredientUnitStyle
+                            }
+                          >
+                            <span
+                              style={
+                                smallLabelStyle
+                              }
+                            >
+                              Jednostka
+                            </span>
+
+                            <div
+                              style={
+                                ingredientUnitValueStyle
+                              }
+                            >
+                              {ingredient.unit ||
+                                product?.unit ||
+                                "—"}
+                            </div>
+                          </div>
+
+                          <div
+                            style={
+                              ingredientCostStyle
+                            }
+                          >
+                            <span
+                              style={
+                                smallLabelStyle
+                              }
+                            >
+                              Koszt
+                            </span>
+
+                            <strong>
+                              {formatMoney(
+                                ingredientCost
+                              )}
+                            </strong>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeIngredient(
+                                ingredient.id
+                              )
+                            }
+                            disabled={
+                              saving
+                            }
+                            style={
+                              removeIngredientButtonStyle
+                            }
+                          >
+                            Usuń
+                          </button>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+
+              <div
+                style={
+                  costSummaryStyle
+                }
+              >
+                <div>
+                  <span
+                    style={
+                      costSummaryLabelStyle
+                    }
+                  >
+                    Koszt produktów
+                  </span>
+
+                  <strong
+                    style={
+                      costSummaryValueStyle
+                    }
+                  >
+                    {formatMoney(
+                      ingredientsCost
+                    )}
+                  </strong>
+                </div>
+
+                <div>
+                  <span
+                    style={
+                      costSummaryLabelStyle
+                    }
+                  >
+                    Koszty dodatkowe
+                  </span>
+
+                  <strong
+                    style={
+                      costSummaryValueStyle
+                    }
+                  >
+                    {formatMoney(
+                      additionalCosts
+                    )}
+                  </strong>
+                </div>
+
+                <div
+                  style={
+                    totalCostBoxStyle
+                  }
+                >
+                  <span
+                    style={
+                      totalCostLabelStyle
+                    }
+                  >
+                    Łączny koszt receptury
+                  </span>
+
+                  <strong
+                    style={
+                      totalCostValueStyle
+                    }
+                  >
+                    {formatMoney(
+                      totalCost
+                    )}
+                  </strong>
+                </div>
+              </div>
+
+              <div
+                style={
+                  additionalCostsHeaderStyle
+                }
+              >
+                Koszty dodatkowe
+              </div>
+
+              <div
+                style={
+                  twoColumnStyle
+                }
+              >
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
+                  <span
+                    style={
+                      labelTextStyle
+                    }
+                  >
+                    Koszt pracy
+                  </span>
+
+                  <div
+                    style={
+                      priceInputWrapperStyle
+                    }
+                  >
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={
+                        form.laborCost
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "laborCost",
+                          event.target
+                            .value
+                        )
+                      }
+                      placeholder="0,00"
+                      disabled={
+                        saving
+                      }
+                      style={
+                        priceInputStyle
+                      }
+                    />
+
+                    <span
+                      style={
+                        currencyStyle
+                      }
+                    >
+                      zł
+                    </span>
+                  </div>
+                </label>
+
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
+                  <span
+                    style={
+                      labelTextStyle
+                    }
+                  >
+                    Koszt energii
+                  </span>
+
+                  <div
+                    style={
+                      priceInputWrapperStyle
+                    }
+                  >
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={
+                        form.energyCost
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "energyCost",
+                          event.target
+                            .value
+                        )
+                      }
+                      placeholder="0,00"
+                      disabled={
+                        saving
+                      }
+                      style={
+                        priceInputStyle
+                      }
+                    />
+
+                    <span
+                      style={
+                        currencyStyle
+                      }
+                    >
+                      zł
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <label
+                style={labelStyle}
+              >
+                <span
+                  style={
+                    labelTextStyle
+                  }
+                >
+                  Koszt opakowania
+                </span>
+
+                <div
+                  style={
+                    priceInputWrapperStyle
+                  }
+                >
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={
+                      form.packagingCost
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateForm(
+                        "packagingCost",
+                        event.target
+                          .value
+                      )
+                    }
+                    placeholder="0,00"
+                    disabled={
+                      saving
+                    }
+                    style={
+                      priceInputStyle
+                    }
+                  />
+
+                  <span
+                    style={
+                      currencyStyle
+                    }
+                  >
+                    zł
+                  </span>
+                </div>
+              </label>
+
+              <label
+                style={labelStyle}
+              >
+                <span
+                  style={
+                    labelTextStyle
+                  }
+                >
+                  Marża %
+                </span>
+
+                <div
+                  style={
+                    priceInputWrapperStyle
+                  }
+                >
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={
+                      form.marginPercent
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateForm(
+                        "marginPercent",
+                        event.target
+                          .value
+                      )
+                    }
+                    placeholder="np. 30"
+                    disabled={
+                      saving
+                    }
+                    style={
+                      priceInputStyle
+                    }
+                  />
+
+                  <span
+                    style={
+                      currencyStyle
+                    }
+                  >
+                    %
+                  </span>
+                </div>
+              </label>
+
+              <div
+                style={
+                  salePriceBoxStyle
+                }
+              >
+                <span>
+                  Cena po dodaniu marży
+                </span>
+
+                <strong>
+                  {formatMoney(
+                    salePrice
+                  )}
+                </strong>
+              </div>
+
+              <label
+                style={
+                  checkboxLabelStyle
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={
+                    form.active
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateForm(
+                      "active",
+                      event.target
+                        .checked
+                    )
+                  }
+                  disabled={
+                    saving
+                  }
+                />
+
+                <span>
+                  Receptura aktywna
+                </span>
+              </label>
+
+              {error && (
+                <div
+                  style={
+                    errorStyle
+                  }
+                >
+                  {error}
+                </div>
+              )}
+
+              {success && (
+                <div
+                  style={
+                    successStyle
+                  }
+                >
+                  {success}
+                </div>
+              )}
+
+              <button
+                type="submit"
                 disabled={
                   saving ||
                   products.length ===
                     0
                 }
                 style={{
-                  ...addIngredientButtonStyle,
+                  ...buttonStyle,
                   opacity:
                     saving ||
                     products.length ===
                       0
-                      ? 0.5
+                      ? 0.6
                       : 1,
+                  cursor:
+                    saving ||
+                    products.length ===
+                      0
+                      ? "not-allowed"
+                      : "pointer",
                 }}
               >
-                + Dodaj składnik
+                {saving
+                  ? "Zapisywanie..."
+                  : editingId
+                  ? "Zapisz zmiany"
+                  : "+ Dodaj recepturę"}
+              </button>
+            </form>
+          </div>
+
+          <div
+            style={
+              listCardStyle
+            }
+          >
+            <div
+              style={
+                cardHeaderStyle
+              }
+            >
+              <div>
+                <h3
+                  style={
+                    cardTitleStyle
+                  }
+                >
+                  Lista receptur
+                </h3>
+
+                <p
+                  style={
+                    cardSubtitleStyle
+                  }
+                >
+                  Receptury zapisane w bazie Supabase.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  loadData
+                }
+                disabled={
+                  loading
+                }
+                style={
+                  refreshButtonStyle
+                }
+              >
+                Odśwież
               </button>
             </div>
 
-            {products.length ===
-            0 ? (
+            <div
+              style={
+                filtersStyle
+              }
+            >
               <div
                 style={
-                  warningStyle
+                  searchWrapperStyle
                 }
               >
+                <span
+                  style={
+                    searchIconStyle
+                  }
+                >
+                  🔍
+                </span>
+
+                <input
+                  type="text"
+                  value={
+                    search
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setSearch(
+                      event.target
+                        .value
+                    )
+                  }
+                  placeholder="Szukaj receptury lub kategorii..."
+                  style={
+                    searchInputStyle
+                  }
+                />
+              </div>
+
+              <select
+                value={
+                  categoryFilter
+                }
+                onChange={(
+                  event
+                ) =>
+                  setCategoryFilter(
+                    event.target
+                      .value
+                  )
+                }
+                style={
+                  filterSelectStyle
+                }
+              >
+                <option value="all">
+                  Wszystkie kategorie
+                </option>
+
+                {categories.map(
+                  (
+                    category
+                  ) => (
+                    <option
+                      key={
+                        category
+                      }
+                      value={
+                        category
+                      }
+                    >
+                      {
+                        category
+                      }
+                    </option>
+                  )
+                )}
+              </select>
+
+              {(search !==
+                "" ||
+                categoryFilter !==
+                  "all") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setCategoryFilter(
+                      "all"
+                    );
+                  }}
+                  style={
+                    clearFilterButtonStyle
+                  }
+                >
+                  Wyczyść
+                </button>
+              )}
+            </div>
+
+            {!loading &&
+              recipes.length >
+                0 && (
+                <div
+                  style={
+                    resultsInfoStyle
+                  }
+                >
+                  Wyświetlono{" "}
+                  <strong>
+                    {
+                      filteredRecipes.length
+                    }
+                  </strong>{" "}
+                  z{" "}
+                  <strong>
+                    {
+                      recipes.length
+                    }
+                  </strong>{" "}
+                  receptur
+                </div>
+              )}
+
+            {loading ? (
+              <div
+                style={
+                  emptyStyle
+                }
+              >
+                Ładowanie receptur...
+              </div>
+            ) : recipes.length ===
+              0 ? (
+              <div
+                style={
+                  emptyStyle
+                }
+              >
+                <div
+                  style={
+                    emptyIconStyle
+                  }
+                >
+                  R
+                </div>
+
                 <strong>
-                  Brak aktywnych produktów
+                  Brak receptur
                 </strong>
 
                 <p
                   style={
-                    warningTextStyle
+                    emptyTextStyle
                   }
                 >
-                  Najpierw dodaj produkty w module
-                  „Produkty”.
+                  Dodaj pierwszą recepturę za
+                  pomocą formularza.
                 </p>
               </div>
-            ) : ingredients.length ===
+            ) : filteredRecipes.length ===
               0 ? (
               <div
                 style={
-                  ingredientsEmptyStyle
+                  emptyStyle
                 }
               >
-                Nie dodano jeszcze żadnych składników.
+                <div
+                  style={
+                    emptyIconStyle
+                  }
+                >
+                  ?
+                </div>
+
+                <strong>
+                  Nie znaleziono receptur
+                </strong>
+
+                <p
+                  style={
+                    emptyTextStyle
+                  }
+                >
+                  Zmień wyszukiwanie lub
+                  kategorię.
+                </p>
               </div>
             ) : (
               <div
                 style={
-                  ingredientsListStyle
+                  recipesListStyle
                 }
               >
-                {ingredients.map(
+                {filteredRecipes.map(
                   (
-                    ingredient,
-                    index
-                  ) => {
-                    const product =
-                      getProduct(
-                        ingredient.productId
-                      );
-
-                    const ingredientCost =
-                      calculateIngredientCost(
-                        ingredient
-                      );
-
-                    return (
+                    recipe
+                  ) => (
+                    <div
+                      key={
+                        recipe.id
+                      }
+                      style={
+                        recipeRowStyle
+                      }
+                    >
                       <div
-                        key={
-                          ingredient.id
-                        }
                         style={
-                          ingredientRowStyle
+                          recipeMainStyle
                         }
                       >
                         <div
                           style={
-                            ingredientNumberStyle
+                            recipeIconStyle
                           }
                         >
-                          {index +
-                            1}
+                          {recipe.name
+                            .charAt(
+                              0
+                            )
+                            .toUpperCase()}
                         </div>
 
-                        <div
-                          style={
-                            ingredientProductStyle
-                          }
-                        >
-                          <span
+                        <div>
+                          <div
                             style={
-                              smallLabelStyle
+                              recipeNameStyle
                             }
                           >
-                            Produkt
-                          </span>
-
-                          <select
-                            value={
-                              ingredient.productId
+                            {
+                              recipe.name
                             }
-                            onChange={(
-                              event
-                            ) =>
-                              updateIngredient(
-                                ingredient.id,
-                                "productId",
-                                event.target
-                                  .value
-                              )
-                            }
-                            disabled={
-                              saving
-                            }
-                            style={
-                              inputStyle
-                            }
-                          >
-                            <option value="">
-                              Wybierz produkt
-                            </option>
-
-                            {products.map(
-                              (
-                                item
-                              ) => (
-                                <option
-                                  key={
-                                    item.id
-                                  }
-                                  value={
-                                    item.id
-                                  }
-                                >
-                                  {
-                                    item.name
-                                  }
-                                </option>
-                              )
-                            )}
-                          </select>
-                        </div>
-
-                        <div
-                          style={
-                            ingredientQuantityStyle
-                          }
-                        >
-                          <span
-                            style={
-                              smallLabelStyle
-                            }
-                          >
-                            Ilość
-                          </span>
-
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={
-                              ingredient.quantity
-                            }
-                            onChange={(
-                              event
-                            ) =>
-                              updateIngredient(
-                                ingredient.id,
-                                "quantity",
-                                event.target
-                                  .value
-                              )
-                            }
-                            placeholder="np. 500"
-                            disabled={
-                              saving
-                            }
-                            style={
-                              inputStyle
-                            }
-                          />
-                        </div>
-
-                        <div
-                          style={
-                            ingredientUnitStyle
-                          }
-                        >
-                          <span
-                            style={
-                              smallLabelStyle
-                            }
-                          >
-                            Jednostka
-                          </span>
+                          </div>
 
                           <div
                             style={
-                              ingredientUnitValueStyle
+                              recipeMetaStyle
                             }
                           >
-                            {ingredient.unit ||
-                              product?.unit ||
-                              "—"}
+                            {recipe.category ||
+                              "Bez kategorii"}
+
+                            {recipe.portions
+                              ? ` • ${recipe.portions} porcji`
+                              : ""}
+
+                            {recipe.diameter_cm
+                              ? ` • Ø ${recipe.diameter_cm} cm`
+                              : ""}
                           </div>
                         </div>
+                      </div>
 
-                        <div
-                          style={
-                            ingredientCostStyle
-                          }
-                        >
+                      <div
+                        style={
+                          recipeDetailsStyle
+                        }
+                      >
+                        <div>
                           <span
                             style={
-                              smallLabelStyle
+                              detailLabelStyle
                             }
                           >
                             Koszt
@@ -2067,833 +2836,714 @@ export default function Recipes() {
 
                           <strong>
                             {formatMoney(
-                              ingredientCost
+                              Number(
+                                recipe.cost ??
+                                  0
+                              )
                             )}
                           </strong>
                         </div>
 
+                        <div>
+                          <span
+                            style={
+                              detailLabelStyle
+                            }
+                          >
+                            Marża
+                          </span>
+
+                          <strong>
+                            {recipe.margin_percent !==
+                            null
+                              ? `${Number(
+                                  recipe.margin_percent
+                                )
+                                  .toFixed(
+                                    0
+                                  )
+                                  .replace(
+                                    ".",
+                                    ","
+                                  )}%`
+                              : "—"}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span
+                            style={
+                              detailLabelStyle
+                            }
+                          >
+                            Status
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleActive(
+                                recipe
+                              )
+                            }
+                            style={{
+                              ...statusStyle,
+                              ...(recipe.active
+                                ? activeStatusStyle
+                                : inactiveStatusStyle),
+                            }}
+                          >
+                            {recipe.active
+                              ? "Aktywna"
+                              : "Nieaktywna"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div
+                        style={
+                          actionsStyle
+                        }
+                      >
                         <button
                           type="button"
                           onClick={() =>
-                            removeIngredient(
-                              ingredient.id
+                            openRecipePreview(
+                              recipe
                             )
                           }
-                          disabled={
-                            saving
+                          style={
+                            previewButtonStyle
+                          }
+                        >
+                          Podgląd
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            startEditing(
+                              recipe
+                            )
                           }
                           style={
-                            removeIngredientButtonStyle
+                            editButtonStyle
+                          }
+                        >
+                          Edytuj
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            deleteRecipe(
+                              recipe
+                            )
+                          }
+                          style={
+                            deleteButtonStyle
                           }
                         >
                           Usuń
                         </button>
                       </div>
-                    );
-                  }
+                    </div>
+                  )
                 )}
               </div>
             )}
+          </div>
+        </div>
+      </section>
 
+      {/*
+       * =====================================================
+       * MODAL — PEŁNA KARTA RECEPTURY
+       * =====================================================
+       */}
+
+      {previewRecipe && (
+        <div
+          style={
+            modalOverlayStyle
+          }
+          onMouseDown={(event) => {
+            if (
+              event.target ===
+              event.currentTarget
+            ) {
+              closeRecipePreview();
+            }
+          }}
+        >
+          <div
+            style={
+              modalStyle
+            }
+          >
             <div
               style={
-                costSummaryStyle
+                modalHeaderStyle
               }
             >
               <div>
-                <span
+                <div
                   style={
-                    costSummaryLabelStyle
+                    modalEyebrowStyle
                   }
                 >
-                  Koszt produktów
-                </span>
+                  KARTA RECEPTURY
+                </div>
 
-                <strong
+                <h2
                   style={
-                    costSummaryValueStyle
+                    modalTitleStyle
                   }
                 >
-                  {formatMoney(
-                    ingredientsCost
-                  )}
-                </strong>
-              </div>
-
-              <div>
-                <span
-                  style={
-                    costSummaryLabelStyle
+                  {
+                    previewRecipe.name
                   }
-                >
-                  Koszty dodatkowe
-                </span>
-
-                <strong
-                  style={
-                    costSummaryValueStyle
-                  }
-                >
-                  {formatMoney(
-                    additionalCosts
-                  )}
-                </strong>
-              </div>
-
-              <div
-                style={
-                  totalCostBoxStyle
-                }
-              >
-                <span
-                  style={
-                    totalCostLabelStyle
-                  }
-                >
-                  Łączny koszt receptury
-                </span>
-
-                <strong
-                  style={
-                    totalCostValueStyle
-                  }
-                >
-                  {formatMoney(
-                    totalCost
-                  )}
-                </strong>
-              </div>
-            </div>
-
-            <div
-              style={
-                additionalCostsHeaderStyle
-              }
-            >
-              Koszty dodatkowe
-            </div>
-
-            <div
-              style={
-                twoColumnStyle
-              }
-            >
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                <span
-                  style={
-                    labelTextStyle
-                  }
-                >
-                  Koszt pracy
-                </span>
+                </h2>
 
                 <div
                   style={
-                    priceInputWrapperStyle
+                    modalMetaStyle
                   }
                 >
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={
-                      form.laborCost
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      updateForm(
-                        "laborCost",
-                        event.target
-                          .value
-                      )
-                    }
-                    placeholder="0,00"
-                    disabled={
-                      saving
-                    }
-                    style={
-                      priceInputStyle
-                    }
-                  />
+                  {previewRecipe.category ||
+                    "Bez kategorii"}
 
-                  <span
-                    style={
-                      currencyStyle
-                    }
-                  >
-                    zł
-                  </span>
+                  {previewRecipe.portions
+                    ? ` • ${previewRecipe.portions} porcji`
+                    : ""}
+
+                  {previewRecipe.diameter_cm
+                    ? ` • Ø ${previewRecipe.diameter_cm} cm`
+                    : ""}
+
+                  {previewRecipe.height_cm
+                    ? ` • wysokość ${previewRecipe.height_cm} cm`
+                    : ""}
                 </div>
-              </label>
+              </div>
 
-              <label
-                style={
-                  labelStyle
+              <button
+                type="button"
+                onClick={
+                  closeRecipePreview
                 }
+                style={
+                  modalCloseButtonStyle
+                }
+                aria-label="Zamknij"
               >
-                <span
-                  style={
-                    labelTextStyle
-                  }
-                >
-                  Koszt energii
-                </span>
-
-                <div
-                  style={
-                    priceInputWrapperStyle
-                  }
-                >
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={
-                      form.energyCost
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      updateForm(
-                        "energyCost",
-                        event.target
-                          .value
-                      )
-                    }
-                    placeholder="0,00"
-                    disabled={
-                      saving
-                    }
-                    style={
-                      priceInputStyle
-                    }
-                  />
-
-                  <span
-                    style={
-                      currencyStyle
-                    }
-                  >
-                    zł
-                  </span>
-                </div>
-              </label>
+                ×
+              </button>
             </div>
 
-            <label
-              style={labelStyle}
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
-                Koszt opakowania
-              </span>
-
+            {previewRecipe.description && (
               <div
                 style={
-                  priceInputWrapperStyle
+                  modalDescriptionStyle
                 }
               >
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={
-                    form.packagingCost
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateForm(
-                      "packagingCost",
-                      event.target
-                        .value
-                    )
-                  }
-                  placeholder="0,00"
-                  disabled={
-                    saving
-                  }
-                  style={
-                    priceInputStyle
-                  }
-                />
-
-                <span
-                  style={
-                    currencyStyle
-                  }
-                >
-                  zł
-                </span>
+                {
+                  previewRecipe.description
+                }
               </div>
-            </label>
+            )}
 
-            <label
-              style={labelStyle}
-            >
-              <span
-                style={
-                  labelTextStyle
-                }
-              >
-                Marża %
-              </span>
-
+            {previewLoading ? (
               <div
                 style={
-                  priceInputWrapperStyle
+                  modalLoadingStyle
                 }
               >
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={
-                    form.marginPercent
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateForm(
-                      "marginPercent",
-                      event.target
-                        .value
-                    )
-                  }
-                  placeholder="np. 30"
-                  disabled={
-                    saving
-                  }
-                  style={
-                    priceInputStyle
-                  }
-                />
-
-                <span
-                  style={
-                    currencyStyle
-                  }
-                >
-                  %
-                </span>
+                Ładowanie składników...
               </div>
-            </label>
-
-            <div
-              style={
-                salePriceBoxStyle
-              }
-            >
-              <span>
-                Cena po dodaniu marży
-              </span>
-
-              <strong>
-                {formatMoney(
-                  salePrice
-                )}
-              </strong>
-            </div>
-
-            <label
-              style={
-                checkboxLabelStyle
-              }
-            >
-              <input
-                type="checkbox"
-                checked={
-                  form.active
-                }
-                onChange={(
-                  event
-                ) =>
-                  updateForm(
-                    "active",
-                    event.target
-                      .checked
-                  )
-                }
-                disabled={
-                  saving
-                }
-              />
-
-              <span>
-                Receptura aktywna
-              </span>
-            </label>
-
-            {error && (
+            ) : previewError ? (
               <div
                 style={
                   errorStyle
                 }
               >
-                {error}
+                {
+                  previewError
+                }
               </div>
-            )}
-
-            {success && (
-              <div
-                style={
-                  successStyle
-                }
-              >
-                {success}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={
-                saving ||
-                products.length ===
-                  0
-              }
-              style={{
-                ...buttonStyle,
-                opacity:
-                  saving ||
-                  products.length ===
-                    0
-                    ? 0.6
-                    : 1,
-                cursor:
-                  saving ||
-                  products.length ===
-                    0
-                    ? "not-allowed"
-                    : "pointer",
-              }}
-            >
-              {saving
-                ? "Zapisywanie..."
-                : editingId
-                ? "Zapisz zmiany"
-                : "+ Dodaj recepturę"}
-            </button>
-          </form>
-        </div>
-
-        <div
-          style={
-            listCardStyle
-          }
-        >
-          <div
-            style={
-              cardHeaderStyle
-            }
-          >
-            <div>
-              <h3
-                style={
-                  cardTitleStyle
-                }
-              >
-                Lista receptur
-              </h3>
-
-              <p
-                style={
-                  cardSubtitleStyle
-                }
-              >
-                Receptury zapisane w bazie Supabase.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={
-                loadData
-              }
-              disabled={
-                loading
-              }
-              style={
-                refreshButtonStyle
-              }
-            >
-              Odśwież
-            </button>
-          </div>
-
-          <div
-            style={
-              filtersStyle
-            }
-          >
-            <div
-              style={
-                searchWrapperStyle
-              }
-            >
-              <span
-                style={
-                  searchIconStyle
-                }
-              >
-                🔍
-              </span>
-
-              <input
-                type="text"
-                value={
-                  search
-                }
-                onChange={(
-                  event
-                ) =>
-                  setSearch(
-                    event.target
-                      .value
-                  )
-                }
-                placeholder="Szukaj receptury lub kategorii..."
-                style={
-                  searchInputStyle
-                }
-              />
-            </div>
-
-            <select
-              value={
-                categoryFilter
-              }
-              onChange={(
-                event
-              ) =>
-                setCategoryFilter(
-                  event.target
-                    .value
-                )
-              }
-              style={
-                filterSelectStyle
-              }
-            >
-              <option value="all">
-                Wszystkie kategorie
-              </option>
-
-              {categories.map(
-                (
-                  category
-                ) => (
-                  <option
-                    key={
-                      category
-                    }
-                    value={
-                      category
-                    }
-                  >
-                    {
-                      category
-                    }
-                  </option>
-                )
-              )}
-            </select>
-
-            {(search !==
-              "" ||
-              categoryFilter !==
-                "all") && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setCategoryFilter(
-                    "all"
-                  );
-                }}
-                style={
-                  clearFilterButtonStyle
-                }
-              >
-                Wyczyść
-              </button>
-            )}
-          </div>
-
-          {!loading &&
-            recipes.length >
-              0 && (
-              <div
-                style={
-                  resultsInfoStyle
-                }
-              >
-                Wyświetlono{" "}
-                <strong>
-                  {
-                    filteredRecipes.length
+            ) : (
+              <>
+                <div
+                  style={
+                    modalSectionStyle
                   }
-                </strong>{" "}
-                z{" "}
-                <strong>
-                  {
-                    recipes.length
-                  }
-                </strong>{" "}
-                receptur
-              </div>
-            )}
-
-          {loading ? (
-            <div
-              style={
-                emptyStyle
-              }
-            >
-              Ładowanie receptur...
-            </div>
-          ) : recipes.length ===
-            0 ? (
-            <div
-              style={
-                emptyStyle
-              }
-            >
-              <div
-                style={
-                  emptyIconStyle
-                }
-              >
-                R
-              </div>
-
-              <strong>
-                Brak receptur
-              </strong>
-
-              <p
-                style={
-                  emptyTextStyle
-                }
-              >
-                Dodaj pierwszą recepturę za
-                pomocą formularza.
-              </p>
-            </div>
-          ) : filteredRecipes.length ===
-            0 ? (
-            <div
-              style={
-                emptyStyle
-              }
-            >
-              <div
-                style={
-                  emptyIconStyle
-                }
-              >
-                ?
-              </div>
-
-              <strong>
-                Nie znaleziono receptur
-              </strong>
-
-              <p
-                style={
-                  emptyTextStyle
-                }
-              >
-                Zmień wyszukiwanie lub
-                kategorię.
-              </p>
-            </div>
-          ) : (
-            <div
-              style={
-                recipesListStyle
-              }
-            >
-              {filteredRecipes.map(
-                (
-                  recipe
-                ) => (
+                >
                   <div
-                    key={
-                      recipe.id
-                    }
                     style={
-                      recipeRowStyle
+                      modalSectionHeaderStyle
                     }
                   >
+                    <div>
+                      <h3
+                        style={
+                          modalSectionTitleStyle
+                        }
+                      >
+                        Składniki
+                      </h3>
+
+                      <p
+                        style={
+                          modalSectionSubtitleStyle
+                        }
+                      >
+                        Produkty wykorzystane w recepturze
+                      </p>
+                    </div>
+
                     <div
                       style={
-                        recipeMainStyle
+                        ingredientCountBadgeStyle
+                      }
+                    >
+                      {
+                        previewIngredients.length
+                      }{" "}
+                      składników
+                    </div>
+                  </div>
+
+                  {previewIngredients.length ===
+                  0 ? (
+                    <div
+                      style={
+                        modalEmptyIngredientsStyle
+                      }
+                    >
+                      Brak składników w tej recepturze.
+                    </div>
+                  ) : (
+                    <div
+                      style={
+                        previewIngredientsTableStyle
                       }
                     >
                       <div
                         style={
-                          recipeIconStyle
+                          previewTableHeaderStyle
                         }
                       >
-                        {recipe.name
-                          .charAt(
-                            0
-                          )
-                          .toUpperCase()}
-                      </div>
+                        <span>
+                          #
+                        </span>
 
-                      <div>
-                        <div
-                          style={
-                            recipeNameStyle
-                          }
-                        >
-                          {
-                            recipe.name
-                          }
-                        </div>
+                        <span>
+                          Produkt
+                        </span>
 
-                        <div
-                          style={
-                            recipeMetaStyle
-                          }
-                        >
-                          {recipe.category ||
-                            "Bez kategorii"}
+                        <span>
+                          Ilość
+                        </span>
 
-                          {recipe.portions
-                            ? ` • ${recipe.portions} porcji`
-                            : ""}
+                        <span>
+                          Jednostka
+                        </span>
 
-                          {recipe.diameter_cm
-                            ? ` • Ø ${recipe.diameter_cm} cm`
-                            : ""}
-                        </div>
-                      </div>
-                    </div>
+                        <span>
+                          Cena opakowania
+                        </span>
 
-                    <div
-                      style={
-                        recipeDetailsStyle
-                      }
-                    >
-                      <div>
-                        <span
-                          style={
-                            detailLabelStyle
-                          }
-                        >
+                        <span>
                           Koszt
                         </span>
-
-<strong>
-  {formatMoney(
-    Number(recipe.cost ?? 0)
-  )}
-</strong>
                       </div>
 
-                      <div>
-                        <span
-                          style={
-                            detailLabelStyle
-                          }
-                        >
-                          Marża
-                        </span>
+                      {previewIngredients.map(
+                        (
+                          ingredient,
+                          index
+                        ) => (
+                          <div
+                            key={
+                              ingredient.id
+                            }
+                            style={
+                              previewTableRowStyle
+                            }
+                          >
+                            <span
+                              style={
+                                previewIndexStyle
+                              }
+                            >
+                              {index +
+                                1}
+                            </span>
 
-                        <strong>
-                          {recipe.margin_percent !==
-                          null
-                            ? `${Number(
-                                recipe.margin_percent
+                            <strong
+                              style={
+                                previewProductNameStyle
+                              }
+                            >
+                              {ingredient.product
+                                ?.name ||
+                                "Nieznany produkt"}
+                            </strong>
+
+                            <span>
+                              {Number(
+                                ingredient.quantity
                               )
                                 .toFixed(
-                                  0
+                                  3
+                                )
+                                .replace(
+                                  /0+$/,
+                                  ""
+                                )
+                                .replace(
+                                  /\.$/,
+                                  ""
                                 )
                                 .replace(
                                   ".",
                                   ","
-                                )}%`
-                            : "—"}
-                        </strong>
-                      </div>
+                                )}
+                            </span>
 
-                      <div>
-                        <span
-                          style={
-                            detailLabelStyle
-                          }
-                        >
-                          Status
+                            <span
+                              style={
+                                previewUnitStyle
+                              }
+                            >
+                              {
+                                ingredient.unit
+                              }
+                            </span>
+
+                            <span>
+                              {ingredient.product
+                                ? formatMoney(
+                                    Number(
+                                      ingredient
+                                        .product
+                                        .package_price
+                                    )
+                                  )
+                                : "—"}
+                            </span>
+
+                            <strong
+                              style={
+                                previewCostStyle
+                              }
+                            >
+                              {formatMoney(
+                                ingredient.cost
+                              )}
+                            </strong>
+                          </div>
+                        )
+                      )}
+
+                      <div
+                        style={
+                          previewIngredientsTotalStyle
+                        }
+                      >
+                        <span>
+                          Koszt wszystkich produktów
                         </span>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            toggleActive(
-                              recipe
-                            )
-                          }
-                          style={{
-                            ...statusStyle,
-                            ...(recipe.active
-                              ? activeStatusStyle
-                              : inactiveStatusStyle),
-                          }}
-                        >
-                          {recipe.active
-                            ? "Aktywna"
-                            : "Nieaktywna"}
-                        </button>
+                        <strong>
+                          {formatMoney(
+                            previewProductsCost
+                          )}
+                        </strong>
                       </div>
                     </div>
+                  )}
+                </div>
 
-                    <div
+                <div
+                  style={
+                    modalCostsGridStyle
+                  }
+                >
+                  <div
+                    style={
+                      modalCostBoxStyle
+                    }
+                  >
+                    <span
                       style={
-                        actionsStyle
+                        modalCostLabelStyle
                       }
                     >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          startEditing(
-                            recipe
-                          )
-                        }
-                        style={
-                          editButtonStyle
-                        }
-                      >
-                        Edytuj
-                      </button>
+                      Koszt produktów
+                    </span>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          deleteRecipe(
-                            recipe
-                          )
-                        }
-                        style={
-                          deleteButtonStyle
-                        }
-                      >
-                        Usuń
-                      </button>
-                    </div>
+                    <strong
+                      style={
+                        modalCostValueStyle
+                      }
+                    >
+                      {formatMoney(
+                        previewProductsCost
+                      )}
+                    </strong>
                   </div>
-                )
-              )}
+
+                  <div
+                    style={
+                      modalCostBoxStyle
+                    }
+                  >
+                    <span
+                      style={
+                        modalCostLabelStyle
+                      }
+                    >
+                      Koszt pracy
+                    </span>
+
+                    <strong
+                      style={
+                        modalCostValueStyle
+                      }
+                    >
+                      {formatMoney(
+                        Number(
+                          previewRecipe.labor_cost ??
+                            0
+                        )
+                      )}
+                    </strong>
+                  </div>
+
+                  <div
+                    style={
+                      modalCostBoxStyle
+                    }
+                  >
+                    <span
+                      style={
+                        modalCostLabelStyle
+                      }
+                    >
+                      Koszt energii
+                    </span>
+
+                    <strong
+                      style={
+                        modalCostValueStyle
+                      }
+                    >
+                      {formatMoney(
+                        Number(
+                          previewRecipe.energy_cost ??
+                            0
+                        )
+                      )}
+                    </strong>
+                  </div>
+
+                  <div
+                    style={
+                      modalCostBoxStyle
+                    }
+                  >
+                    <span
+                      style={
+                        modalCostLabelStyle
+                      }
+                    >
+                      Opakowanie
+                    </span>
+
+                    <strong
+                      style={
+                        modalCostValueStyle
+                      }
+                    >
+                      {formatMoney(
+                        Number(
+                          previewRecipe.packaging_cost ??
+                            0
+                        )
+                      )}
+                    </strong>
+                  </div>
+                </div>
+
+                <div
+                  style={
+                    modalFinalSummaryStyle
+                  }
+                >
+                  <div>
+                    <span
+                      style={
+                        finalLabelStyle
+                      }
+                    >
+                      ŁĄCZNY KOSZT RECEPTURY
+                    </span>
+
+                    <strong
+                      style={
+                        finalCostStyle
+                      }
+                    >
+                      {formatMoney(
+                        previewCalculatedTotal
+                      )}
+                    </strong>
+                  </div>
+
+                  <div
+                    style={
+                      finalDividerStyle
+                    }
+                  />
+
+                  <div
+                    style={
+                      finalMarginBoxStyle
+                    }
+                  >
+                    <span
+                      style={
+                        finalSmallLabelStyle
+                      }
+                    >
+                      MARŻA
+                    </span>
+
+                    <strong
+                      style={
+                        finalMarginStyle
+                      }
+                    >
+                      {previewMargin
+                        .toFixed(
+                          2
+                        )
+                        .replace(
+                          ".",
+                          ","
+                        )}
+                      %
+                    </strong>
+                  </div>
+
+                  <div
+                    style={
+                      finalSaleBoxStyle
+                    }
+                  >
+                    <span
+                      style={
+                        finalSaleLabelStyle
+                      }
+                    >
+                      CENA SPRZEDAŻY
+                    </span>
+
+                    <strong
+                      style={
+                        finalSalePriceStyle
+                      }
+                    >
+                      {formatMoney(
+                        previewSalePrice
+                      )}
+                    </strong>
+                  </div>
+                </div>
+
+                <div
+                  style={
+                    modalFooterStyle
+                  }
+                >
+                  <span>
+                    Status receptury:
+                  </span>
+
+                  <span
+                    style={{
+                      ...modalStatusStyle,
+                      ...(previewRecipe.active
+                        ? modalActiveStatusStyle
+                        : modalInactiveStatusStyle),
+                    }}
+                  >
+                    {previewRecipe.active
+                      ? "Aktywna"
+                      : "Nieaktywna"}
+                  </span>
+
+                  <span
+                    style={
+                      modalFooterSeparatorStyle
+                    }
+                  >
+                    •
+                  </span>
+
+                  <span>
+                    Koszt dodatkowy:{" "}
+                    <strong>
+                      {formatMoney(
+                        previewAdditionalCosts
+                      )}
+                    </strong>
+                  </span>
+                </div>
+              </>
+            )}
+
+            <div
+              style={
+                modalBottomActionsStyle
+              }
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  const recipe =
+                    previewRecipe;
+
+                  closeRecipePreview();
+
+                  startEditing(
+                    recipe
+                  );
+                }}
+                style={
+                  modalEditButtonStyle
+                }
+              >
+                Edytuj recepturę
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  closeRecipePreview
+                }
+                style={
+                  modalCloseBottomButtonStyle
+                }
+              >
+                Zamknij
+              </button>
             </div>
-          )}
+          </div>
         </div>
-      </div>
-    </section>
+      )}
+    </>
   );
 }
 
@@ -3527,6 +4177,19 @@ const actionsStyle = {
   display: "flex",
   gap: "8px",
   marginLeft: "auto",
+  flexWrap: "wrap" as const,
+};
+
+const previewButtonStyle = {
+  border:
+    "1px solid #cbb89f",
+  background: "#f8f3ed",
+  color: "#765a3e",
+  borderRadius: "8px",
+  padding: "8px 12px",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: 600,
 };
 
 const editButtonStyle = {
@@ -3551,4 +4214,397 @@ const deleteButtonStyle = {
   cursor: "pointer",
   fontSize: "12px",
   fontWeight: 600,
+};
+
+/* =====================================================
+   MODAL
+===================================================== */
+
+const modalOverlayStyle = {
+  position: "fixed" as const,
+  inset: 0,
+  background:
+    "rgba(41, 37, 34, 0.58)",
+  zIndex: 9999,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "24px",
+  boxSizing:
+    "border-box" as const,
+};
+
+const modalStyle = {
+  width: "100%",
+  maxWidth: "1050px",
+  maxHeight: "calc(100vh - 48px)",
+  overflowY: "auto" as const,
+  background: "#ffffff",
+  borderRadius: "20px",
+  border:
+    "1px solid #e4dcd4",
+  boxShadow:
+    "0 25px 80px rgba(0,0,0,0.22)",
+  padding: "28px",
+  boxSizing:
+    "border-box" as const,
+};
+
+const modalHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "20px",
+  paddingBottom: "20px",
+  borderBottom:
+    "1px solid #eee7e0",
+};
+
+const modalEyebrowStyle = {
+  color: "#8a6d4b",
+  fontSize: "10px",
+  fontWeight: 700,
+  letterSpacing: "2px",
+  marginBottom: "7px",
+};
+
+const modalTitleStyle = {
+  margin: 0,
+  color: "#292522",
+  fontSize: "27px",
+  lineHeight: 1.2,
+};
+
+const modalMetaStyle = {
+  marginTop: "8px",
+  color: "#8a837d",
+  fontSize: "13px",
+};
+
+const modalCloseButtonStyle = {
+  width: "36px",
+  height: "36px",
+  borderRadius: "10px",
+  border:
+    "1px solid #ddd3c9",
+  background: "#ffffff",
+  color: "#716b65",
+  fontSize: "25px",
+  lineHeight: 1,
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
+const modalDescriptionStyle = {
+  background: "#f8f5f2",
+  border:
+    "1px solid #eee5dd",
+  borderRadius: "11px",
+  padding: "13px 15px",
+  marginTop: "18px",
+  color: "#716b65",
+  fontSize: "13px",
+  lineHeight: 1.6,
+};
+
+const modalLoadingStyle = {
+  minHeight: "250px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#8a837d",
+  fontSize: "14px",
+};
+
+const modalSectionStyle = {
+  marginTop: "24px",
+};
+
+const modalSectionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "15px",
+  marginBottom: "13px",
+};
+
+const modalSectionTitleStyle = {
+  margin: 0,
+  color: "#292522",
+  fontSize: "17px",
+};
+
+const modalSectionSubtitleStyle = {
+  margin: "4px 0 0",
+  color: "#8a837d",
+  fontSize: "11px",
+};
+
+const ingredientCountBadgeStyle = {
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  borderRadius: "20px",
+  padding: "7px 11px",
+  fontSize: "11px",
+  fontWeight: 600,
+};
+
+const previewIngredientsTableStyle = {
+  border:
+    "1px solid #e9e2da",
+  borderRadius: "12px",
+  overflow: "hidden",
+};
+
+const previewTableHeaderStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "35px minmax(180px, 1fr) 100px 90px 150px 120px",
+  gap: "10px",
+  padding: "11px 14px",
+  background: "#f7f3ef",
+  color: "#8a837d",
+  fontSize: "10px",
+  fontWeight: 700,
+  textTransform:
+    "uppercase" as const,
+  letterSpacing:
+    "0.5px",
+};
+
+const previewTableRowStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "35px minmax(180px, 1fr) 100px 90px 150px 120px",
+  gap: "10px",
+  padding: "13px 14px",
+  alignItems: "center",
+  borderTop:
+    "1px solid #eee7e0",
+  color: "#514b46",
+  fontSize: "13px",
+};
+
+const previewIndexStyle = {
+  width: "25px",
+  height: "25px",
+  borderRadius: "7px",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "10px",
+  fontWeight: 700,
+};
+
+const previewProductNameStyle = {
+  color: "#292522",
+};
+
+const previewUnitStyle = {
+  color: "#8a837d",
+};
+
+const previewCostStyle = {
+  color: "#8a6d4b",
+};
+
+const previewIngredientsTotalStyle = {
+  display: "flex",
+  justifyContent:
+    "space-between",
+  alignItems: "center",
+  padding: "14px",
+  borderTop:
+    "1px solid #dfd2c6",
+  background: "#fbf9f7",
+  color: "#514b46",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const modalEmptyIngredientsStyle = {
+  padding: "30px",
+  textAlign:
+    "center" as const,
+  border:
+    "1px dashed #ddd3c9",
+  borderRadius: "11px",
+  color: "#8a837d",
+  fontSize: "13px",
+};
+
+const modalCostsGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(4, minmax(0, 1fr))",
+  gap: "10px",
+  marginTop: "20px",
+};
+
+const modalCostBoxStyle = {
+  border:
+    "1px solid #e9e2da",
+  borderRadius: "11px",
+  padding: "14px",
+  background: "#ffffff",
+};
+
+const modalCostLabelStyle = {
+  display: "block",
+  color: "#8a837d",
+  fontSize: "10px",
+  textTransform:
+    "uppercase" as const,
+  letterSpacing:
+    "0.5px",
+  marginBottom: "6px",
+};
+
+const modalCostValueStyle = {
+  color: "#514b46",
+  fontSize: "16px",
+};
+
+const modalFinalSummaryStyle = {
+  marginTop: "18px",
+  background: "#f7f3ef",
+  border:
+    "1px solid #e5d8cc",
+  borderRadius: "14px",
+  padding: "19px",
+  display: "grid",
+  gridTemplateColumns:
+    "1fr 1px auto auto",
+  alignItems: "center",
+  gap: "20px",
+};
+
+const finalLabelStyle = {
+  display: "block",
+  color: "#716b65",
+  fontSize: "10px",
+  fontWeight: 700,
+  letterSpacing:
+    "0.7px",
+  marginBottom: "5px",
+};
+
+const finalCostStyle = {
+  color: "#8a6d4b",
+  fontSize: "25px",
+};
+
+const finalDividerStyle = {
+  height: "45px",
+  background: "#ded1c5",
+};
+
+const finalMarginBoxStyle = {
+  textAlign:
+    "center" as const,
+  minWidth: "80px",
+};
+
+const finalSmallLabelStyle = {
+  display: "block",
+  color: "#8a837d",
+  fontSize: "9px",
+  fontWeight: 700,
+  marginBottom: "5px",
+};
+
+const finalMarginStyle = {
+  color: "#514b46",
+  fontSize: "18px",
+};
+
+const finalSaleBoxStyle = {
+  background: "#edf7ef",
+  border:
+    "1px solid #bdd9c3",
+  borderRadius: "11px",
+  padding: "11px 15px",
+  textAlign:
+    "right" as const,
+  minWidth: "150px",
+};
+
+const finalSaleLabelStyle = {
+  display: "block",
+  color: "#477451",
+  fontSize: "9px",
+  fontWeight: 700,
+  letterSpacing:
+    "0.6px",
+  marginBottom: "4px",
+};
+
+const finalSalePriceStyle = {
+  color: "#477451",
+  fontSize: "23px",
+};
+
+const modalFooterStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "9px",
+  flexWrap: "wrap" as const,
+  marginTop: "16px",
+  color: "#8a837d",
+  fontSize: "11px",
+};
+
+const modalStatusStyle = {
+  borderRadius: "20px",
+  padding: "5px 9px",
+  fontWeight: 600,
+};
+
+const modalActiveStatusStyle = {
+  background: "#edf7ef",
+  color: "#477451",
+};
+
+const modalInactiveStatusStyle = {
+  background: "#f3f1ef",
+  color: "#817a74",
+};
+
+const modalFooterSeparatorStyle = {
+  color: "#c8beb5",
+};
+
+const modalBottomActionsStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "9px",
+  marginTop: "22px",
+  paddingTop: "18px",
+  borderTop:
+    "1px solid #eee7e0",
+};
+
+const modalEditButtonStyle = {
+  border:
+    "1px solid #d8c8b8",
+  background: "#8a6d4b",
+  color: "#ffffff",
+  borderRadius: "9px",
+  padding: "10px 15px",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: 600,
+};
+
+const modalCloseBottomButtonStyle = {
+  border:
+    "1px solid #ddd3c9",
+  background: "#ffffff",
+  color: "#716b65",
+  borderRadius: "9px",
+  padding: "10px 15px",
+  cursor: "pointer",
+  fontSize: "12px",
 };
