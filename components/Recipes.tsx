@@ -85,14 +85,8 @@ export default function Recipes() {
   const [ingredients, setIngredients] =
     useState<IngredientRow[]>([]);
 
-  const [previewRecipe, setPreviewRecipe] =
+    const [previewRecipe, setPreviewRecipe] =
     useState<Recipe | null>(null);
-
-  const [form, setForm] =
-    useState<RecipeForm>(emptyRecipeForm);
-
-  const [editingId, setEditingId] = useState
-    <string | null>(null);
 
   const [form, setForm] =
     useState<RecipeForm>(emptyRecipeForm);
