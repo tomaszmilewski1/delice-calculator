@@ -149,7 +149,7 @@ export default function Home() {
     return (
       <main style={loadingPageStyle}>
         <div style={loadingCardStyle}>
-          <div style={loadingLogoStyle}>D</div>
+          <div style={loginLogoStyle}>D</div>
           <strong>Délice</strong>
           <span>Ładowanie aplikacji...</span>
         </div>
