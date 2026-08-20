@@ -3504,11 +3504,20 @@ export default function Recipes() {
               </>
             )}
 
-            <div
-              style={
-                modalBottomActionsStyle
-              }
-            >
+            <div style={modalBottomActionsStyle}>
+  <button
+    type="button"
+    onClick={() => window.print()}
+    style={{
+      ...buttonStyle,
+      background: "#111827",
+      color: "#fff",
+      border: "1px solid #111827",
+    }}
+  >
+    🖨️ Drukuj kartę receptury
+  </button>
+</div>
               <button
                 type="button"
                 onClick={() => {
