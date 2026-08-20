@@ -2478,7 +2478,6 @@ export default function Recipes() {
                 : "+ Dodaj recepturę"}
                         </button>
 
-            <div style={modalBottomActionsStyle}>
               <button
                 type="button"
                 onClick={() => window.print()}
@@ -2491,7 +2490,6 @@ export default function Recipes() {
               >
                 🖨️ Drukuj kartę receptury
               </button>
-            </div>
           </form>
         </div>
 
