@@ -4,10 +4,11 @@
   "description": "Kalkulator tortów, receptury, produkty i zamówienia",
   "start_url": "/",
   "id": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f7f4f1",
   "theme_color": "#8a6d4b",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "/icon.svg",
