@@ -27,20 +27,18 @@ export default function Home() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
 
-  const [activePanel, setActivePanel] =
-    useState<ActivePanel>("dashboard");
+  const [activePanel, setActivePanel] = useState<ActivePanel>("dashboard");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     checkSession();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_event, currentSession) => {
-        setSession(currentSession);
-        setLoading(false);
-      }
-    );
+    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      setSession(currentSession);
+      setLoading(false);
+    });
 
     return () => {
       subscription.unsubscribe();
@@ -56,11 +54,8 @@ export default function Home() {
     setLoading(false);
   }
 
-  async function handleLogin(
-    event: FormEvent<HTMLFormElement>
-  ) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     setLoginError("");
 
     if (!email.trim()) {
@@ -75,16 +70,13 @@ export default function Home() {
 
     setLoginLoading(true);
 
-    const { error } =
-      await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
 
     if (error) {
-      setLoginError(
-        "Nie udało się zalogować. Sprawdź e-mail i hasło."
-      );
+      setLoginError("Nie udało się zalogować. Sprawdź e-mail i hasło.");
       setLoginLoading(false);
       return;
     }
@@ -98,31 +90,31 @@ export default function Home() {
     setActivePanel("dashboard");
   }
 
+  function handleNavigate(panel: ActivePanel) {
+    setActivePanel(panel);
+    setIsMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function renderPanel() {
     switch (activePanel) {
       case "products":
         return <Products />;
-
       case "recipes":
         return <Recipes />;
-
       case "new-cake":
         return <CakeCalculator />;
-
       case "orders":
         return <Orders />;
-
       case "clients":
         return <Clients />;
-
       case "costs":
         return <Costs />;
-
       case "dashboard":
       default:
         return (
           <Dashboard
-            onNavigate={setActivePanel}
+            onNavigate={handleNavigate}
             email={session?.user?.email}
           />
         );
@@ -147,46 +139,28 @@ export default function Home() {
         <div style={loginWrapperStyle}>
           <div style={loginBrandStyle}>
             <div style={loginLogoStyle}>D</div>
-
             <div>
-              <div style={loginBrandNameStyle}>
-                Délice
-              </div>
-
-              <div style={loginBrandSubtitleStyle}>
-                Kalkulator tortów
-              </div>
+              <div style={loginBrandNameStyle}>Délice</div>
+              <div style={loginBrandSubtitleStyle}>Kalkulator tortów</div>
             </div>
           </div>
 
           <div style={loginCardStyle}>
             <div style={loginHeaderStyle}>
-              <div style={loginEyebrowStyle}>
-                PANEL ADMINISTRACYJNY
-              </div>
-
-              <h1 style={loginTitleStyle}>
-                Zaloguj się
-              </h1>
-
+              <div style={loginEyebrowStyle}>PANEL ADMINISTRACYJNY</div>
+              <h1 style={loginTitleStyle}>Zaloguj się</h1>
               <p style={loginDescriptionStyle}>
-                Zaloguj się, aby korzystać z kalkulatora
-                tortów, receptur i bazy produktów.
+                Zaloguj się, aby korzystać z kalkulatora tortów, receptur i bazy produktów.
               </p>
             </div>
 
             <form onSubmit={handleLogin}>
               <label style={loginLabelStyle}>
-                <span style={loginLabelTextStyle}>
-                  E-mail
-                </span>
-
+                <span style={loginLabelTextStyle}>E-mail</span>
                 <input
                   type="email"
                   value={email}
-                  onChange={(event) =>
-                    setEmail(event.target.value)
-                  }
+                  onChange={(event) => setEmail(event.target.value)}
                   placeholder="twoj@email.pl"
                   autoComplete="email"
                   disabled={loginLoading}
@@ -195,16 +169,11 @@ export default function Home() {
               </label>
 
               <label style={loginLabelStyle}>
-                <span style={loginLabelTextStyle}>
-                  Hasło
-                </span>
-
+                <span style={loginLabelTextStyle}>Hasło</span>
                 <input
                   type="password"
                   value={password}
-                  onChange={(event) =>
-                    setPassword(event.target.value)
-                  }
+                  onChange={(event) => setPassword(event.target.value)}
                   placeholder="••••••••"
                   autoComplete="current-password"
                   disabled={loginLoading}
@@ -212,11 +181,7 @@ export default function Home() {
                 />
               </label>
 
-              {loginError && (
-                <div style={loginErrorStyle}>
-                  {loginError}
-                </div>
-              )}
+              {loginError && <div style={loginErrorStyle}>{loginError}</div>}
 
               <button
                 type="submit"
@@ -224,21 +189,15 @@ export default function Home() {
                 style={{
                   ...loginButtonStyle,
                   opacity: loginLoading ? 0.7 : 1,
-                  cursor: loginLoading
-                    ? "not-allowed"
-                    : "pointer",
+                  cursor: loginLoading ? "not-allowed" : "pointer",
                 }}
               >
-                {loginLoading
-                  ? "Logowanie..."
-                  : "Zaloguj się"}
+                {loginLoading ? "Logowanie..." : "Zaloguj się"}
               </button>
             </form>
           </div>
 
-          <div style={loginFooterStyle}>
-            Délice by Milewska
-          </div>
+          <div style={loginFooterStyle}>Délice by Milewska</div>
         </div>
       </main>
     );
@@ -246,91 +205,141 @@ export default function Home() {
 
   return (
     <main style={appPageStyle}>
+      <style>{`
+        @media (max-width: 900px) {
+          .delice-sidebar {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 1000;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            box-shadow: 0 0 25px rgba(0,0,0,0.15);
+          }
+          .delice-sidebar.mobile-open {
+            transform: translateX(0);
+          }
+          .delice-mobile-toggle {
+            display: flex !important;
+          }
+          .delice-content-container {
+            padding: 16px !important;
+          }
+          .delice-backdrop {
+            display: block !important;
+          }
+        }
+        @media (min-width: 901px) {
+          .delice-sidebar {
+            transform: none !important;
+          }
+          .delice-mobile-toggle {
+            display: none !important;
+          }
+          .delice-backdrop {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      {/* Tło przyciemniające przy otwartym menu na smartfonie */}
+      {isMobileMenuOpen && (
+        <div
+          className="delice-backdrop"
+          onClick={() => setIsMobileMenuOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            zIndex: 999,
+          }}
+        />
+      )}
+
       <div style={appShellStyle}>
-        <aside className="delice-no-print" style={sidebarStyle}>
-          <div style={brandStyle}>
-            <div style={brandLogoStyle}>D</div>
-
-            <div>
-              <div style={brandNameStyle}>
-                Délice
-              </div>
-
-              <div style={brandSubtitleStyle}>
-                Kalkulator tortów
+        <aside
+          className={`delice-sidebar ${isMobileMenuOpen ? "mobile-open" : ""}`}
+          style={sidebarStyle}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={brandStyle}>
+              <div style={brandLogoStyle}>D</div>
+              <div>
+                <div style={brandNameStyle}>Délice</div>
+                <div style={brandSubtitleStyle}>Kalkulator tortów</div>
               </div>
             </div>
+
+            <button
+              type="button"
+              className="delice-mobile-toggle"
+              onClick={() => setIsMobileMenuOpen(false)}
+              style={{
+                border: "none",
+                background: "#f4f0ec",
+                borderRadius: 8,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontWeight: 700,
+                color: "#716b65",
+              }}
+            >
+              ✕
+            </button>
           </div>
 
           <nav style={navStyle}>
             <NavButton
               active={activePanel === "dashboard"}
-              onClick={() =>
-                setActivePanel("dashboard")
-              }
+              onClick={() => handleNavigate("dashboard")}
               icon="⌂"
               label="Dashboard"
             />
 
             <NavButton
               active={activePanel === "new-cake"}
-              onClick={() =>
-                setActivePanel("new-cake")
-              }
+              onClick={() => handleNavigate("new-cake")}
               icon="+"
               label="Nowy tort"
               primary
             />
 
-            <div style={navSectionStyle}>
-              KALKULATOR
-            </div>
+            <div style={navSectionStyle}>KALKULATOR</div>
 
             <NavButton
               active={activePanel === "recipes"}
-              onClick={() =>
-                setActivePanel("recipes")
-              }
+              onClick={() => handleNavigate("recipes")}
               icon="R"
               label="Receptury"
             />
 
             <NavButton
               active={activePanel === "products"}
-              onClick={() =>
-                setActivePanel("products")
-              }
+              onClick={() => handleNavigate("products")}
               icon="P"
               label="Produkty"
             />
 
-            <div style={navSectionStyle}>
-              ZARZĄDZANIE
-            </div>
+            <div style={navSectionStyle}>ZARZĄDZANIE</div>
 
             <NavButton
               active={activePanel === "orders"}
-              onClick={() =>
-                setActivePanel("orders")
-              }
+              onClick={() => handleNavigate("orders")}
               icon="O"
               label="Zamówienia"
             />
 
             <NavButton
               active={activePanel === "clients"}
-              onClick={() =>
-                setActivePanel("clients")
-              }
+              onClick={() => handleNavigate("clients")}
               icon="K"
               label="Klienci"
             />
 
             <NavButton
               active={activePanel === "costs"}
-              onClick={() =>
-                setActivePanel("costs")
-              }
+              onClick={() => handleNavigate("costs")}
               icon="Z"
               label="Koszty"
             />
@@ -339,19 +348,13 @@ export default function Home() {
           <div style={sidebarBottomStyle}>
             <div style={userCardStyle}>
               <div style={userAvatarStyle}>
-                {session?.user?.email
-                  ?.charAt(0)
-                  .toUpperCase() || "U"}
+                {session?.user?.email?.charAt(0).toUpperCase() || "U"}
               </div>
-
               <div style={userInfoStyle}>
                 <strong style={userEmailStyle}>
                   {session?.user?.email || "Użytkownik"}
                 </strong>
-
-                <span style={userRoleStyle}>
-                  Administrator
-                </span>
+                <span style={userRoleStyle}>Administrator</span>
               </div>
             </div>
 
@@ -368,14 +371,28 @@ export default function Home() {
 
         <section style={mainContentStyle}>
           <header className="delice-no-print" style={topbarStyle}>
-            <div>
-              <div style={topbarEyebrowStyle}>
-                DÉLICE
-              </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <button
+                type="button"
+                className="delice-mobile-toggle"
+                onClick={() => setIsMobileMenuOpen(true)}
+                style={{
+                  border: "1px solid #ddd3c9",
+                  background: "#ffffff",
+                  borderRadius: 10,
+                  padding: "8px 12px",
+                  fontSize: 18,
+                  cursor: "pointer",
+                  color: "#292522",
+                }}
+              >
+                ☰
+              </button>
 
-              <h1 style={topbarTitleStyle}>
-                {getPanelTitle(activePanel)}
-              </h1>
+              <div>
+                <div style={topbarEyebrowStyle}>DÉLICE</div>
+                <h1 style={topbarTitleStyle}>{getPanelTitle(activePanel)}</h1>
+              </div>
             </div>
 
             <div style={topbarRightStyle}>
@@ -386,7 +403,7 @@ export default function Home() {
             </div>
           </header>
 
-          <div style={contentStyle}>
+          <div className="delice-content-container" style={contentStyle}>
             {renderPanel()}
           </div>
         </section>
@@ -426,7 +443,6 @@ function NavButton({
       >
         {icon}
       </span>
-
       <span>{label}</span>
     </button>
   );
@@ -443,18 +459,10 @@ function Dashboard({
     <section>
       <div style={dashboardWelcomeStyle}>
         <div>
-          <div style={dashboardEyebrowStyle}>
-            PANEL GŁÓWNY
-          </div>
-
-          <h2 style={dashboardTitleStyle}>
-            Witaj w kalkulatorze Délice
-          </h2>
-
+          <div style={dashboardEyebrowStyle}>PANEL GŁÓWNY</div>
+          <h2 style={dashboardTitleStyle}>Witaj w kalkulatorze Délice</h2>
           <p style={dashboardDescriptionStyle}>
-            Zarządzaj recepturami, produktami i
-            przygotowuj kalkulacje tortów w jednym
-            miejscu.
+            Zarządzaj recepturami, produktami i przygotowuj kalkulacje tortów w jednym miejscu.
           </p>
         </div>
 
@@ -503,15 +511,9 @@ function Dashboard({
 
       <div style={quickStartStyle}>
         <div style={quickStartIconStyle}>D</div>
-
         <div>
-          <strong style={quickStartTitleStyle}>
-            Zalogowano jako
-          </strong>
-
-          <p style={quickStartTextStyle}>
-            {email || "Użytkownik"}
-          </p>
+          <strong style={quickStartTitleStyle}>Zalogowano jako</strong>
+          <p style={quickStartTextStyle}>{email || "Użytkownik"}</p>
         </div>
       </div>
     </section>
@@ -533,18 +535,9 @@ function DashboardCard({
 }) {
   return (
     <div style={dashboardCardStyle}>
-      <div style={dashboardCardIconStyle}>
-        {icon}
-      </div>
-
-      <h3 style={dashboardCardTitleStyle}>
-        {title}
-      </h3>
-
-      <p style={dashboardCardDescriptionStyle}>
-        {description}
-      </p>
-
+      <div style={dashboardCardIconStyle}>{icon}</div>
+      <h3 style={dashboardCardTitleStyle}>{title}</h3>
+      <p style={dashboardCardDescriptionStyle}>{description}</p>
       <button
         type="button"
         onClick={onClick}
@@ -552,36 +545,6 @@ function DashboardCard({
       >
         {action} →
       </button>
-    </div>
-  );
-}
-
-function ComingSoon({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={comingSoonCardStyle}>
-      <div style={comingSoonIconStyle}>D</div>
-
-      <div style={comingSoonEyebrowStyle}>
-        MODUŁ
-      </div>
-
-      <h2 style={comingSoonTitleStyle}>
-        {title}
-      </h2>
-
-      <p style={comingSoonDescriptionStyle}>
-        {description}
-      </p>
-
-      <div style={comingSoonBadgeStyle}>
-        Przygotujemy w kolejnym etapie
-      </div>
     </div>
   );
 }
@@ -608,20 +571,18 @@ function getPanelTitle(panel: ActivePanel) {
 }
 
 /* =========================
-   LOGIN
+   STYLE
 ========================= */
 
 const loginPageStyle = {
   minHeight: "100vh",
-  background:
-    "linear-gradient(135deg, #f7f4f1 0%, #eee6dd 100%)",
+  background: "linear-gradient(135deg, #f7f4f1 0%, #eee6dd 100%)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "30px",
+  padding: "20px",
   boxSizing: "border-box" as const,
-  fontFamily:
-    "Arial, Helvetica, sans-serif",
+  fontFamily: "Arial, Helvetica, sans-serif",
 };
 
 const loginWrapperStyle = {
@@ -666,7 +627,7 @@ const loginCardStyle = {
   background: "#ffffff",
   border: "1px solid #e9e2da",
   borderRadius: "20px",
-  padding: "32px",
+  padding: "28px 24px",
   boxShadow: "0 15px 50px rgba(80, 60, 40, 0.08)",
 };
 
@@ -685,7 +646,7 @@ const loginEyebrowStyle = {
 const loginTitleStyle = {
   margin: 0,
   color: "#292522",
-  fontSize: "28px",
+  fontSize: "26px",
 };
 
 const loginDescriptionStyle = {
@@ -748,15 +709,10 @@ const loginFooterStyle = {
   marginTop: "18px",
 };
 
-/* =========================
-   APP
-========================= */
-
 const appPageStyle = {
   minHeight: "100vh",
   background: "#f7f4f1",
-  fontFamily:
-    "Arial, Helvetica, sans-serif",
+  fontFamily: "Arial, Helvetica, sans-serif",
 };
 
 const appShellStyle = {
@@ -780,7 +736,7 @@ const brandStyle = {
   display: "flex",
   alignItems: "center",
   gap: "11px",
-  padding: "4px 9px 24px",
+  padding: "4px 9px 20px",
 };
 
 const brandLogoStyle = {
@@ -940,7 +896,7 @@ const topbarStyle = {
   height: "76px",
   background: "#ffffff",
   borderBottom: "1px solid #e9e2da",
-  padding: "0 30px",
+  padding: "0 20px",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -958,7 +914,7 @@ const topbarEyebrowStyle = {
 const topbarTitleStyle = {
   margin: 0,
   color: "#292522",
-  fontSize: "21px",
+  fontSize: "20px",
 };
 
 const topbarRightStyle = {
@@ -987,21 +943,17 @@ const contentStyle = {
   maxWidth: "1600px",
 };
 
-/* =========================
-   DASHBOARD
-========================= */
-
 const dashboardWelcomeStyle = {
-  background:
-    "linear-gradient(135deg, #ffffff 0%, #fbf8f5 100%)",
+  background: "linear-gradient(135deg, #ffffff 0%, #fbf8f5 100%)",
   border: "1px solid #e9e2da",
   borderRadius: "18px",
-  padding: "28px",
+  padding: "24px",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: "20px",
   marginBottom: "20px",
+  flexWrap: "wrap" as const,
 };
 
 const dashboardEyebrowStyle = {
@@ -1015,7 +967,7 @@ const dashboardEyebrowStyle = {
 const dashboardTitleStyle = {
   margin: 0,
   color: "#292522",
-  fontSize: "26px",
+  fontSize: "24px",
 };
 
 const dashboardDescriptionStyle = {
@@ -1040,8 +992,7 @@ const dashboardPrimaryButtonStyle = {
 
 const dashboardGridStyle = {
   display: "grid",
-  gridTemplateColumns:
-    "repeat(4, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
   gap: "15px",
 };
 
@@ -1076,7 +1027,7 @@ const dashboardCardDescriptionStyle = {
   color: "#8a837d",
   fontSize: "12px",
   lineHeight: 1.5,
-  minHeight: "54px",
+  minHeight: "44px",
 };
 
 const dashboardCardButtonStyle = {
@@ -1124,77 +1075,13 @@ const quickStartTextStyle = {
   fontSize: "12px",
 };
 
-/* =========================
-   COMING SOON
-========================= */
-
-const comingSoonCardStyle = {
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "18px",
-  padding: "55px 30px",
-  textAlign: "center" as const,
-  maxWidth: "700px",
-  margin: "20px auto",
-};
-
-const comingSoonIconStyle = {
-  width: "58px",
-  height: "58px",
-  borderRadius: "17px",
-  background: "#f2ebe4",
-  color: "#8a6d4b",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: "23px",
-  fontWeight: 700,
-  margin: "0 auto 18px",
-};
-
-const comingSoonEyebrowStyle = {
-  color: "#8a6d4b",
-  fontSize: "10px",
-  fontWeight: 700,
-  letterSpacing: "2px",
-};
-
-const comingSoonTitleStyle = {
-  margin: "7px 0 0",
-  color: "#292522",
-  fontSize: "24px",
-};
-
-const comingSoonDescriptionStyle = {
-  color: "#716b65",
-  fontSize: "13px",
-  lineHeight: 1.7,
-  maxWidth: "570px",
-  margin: "10px auto 20px",
-};
-
-const comingSoonBadgeStyle = {
-  display: "inline-block",
-  background: "#f2ebe4",
-  color: "#8a6d4b",
-  borderRadius: "20px",
-  padding: "8px 13px",
-  fontSize: "11px",
-  fontWeight: 600,
-};
-
-/* =========================
-   LOADING
-========================= */
-
 const loadingPageStyle = {
   minHeight: "100vh",
   background: "#f7f4f1",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontFamily:
-    "Arial, Helvetica, sans-serif",
+  fontFamily: "Arial, Helvetica, sans-serif",
 };
 
 const loadingCardStyle = {
