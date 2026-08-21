@@ -7,6 +7,7 @@ import Products from "../components/Products";
 import CakeCalculator from "../components/CakeCalculator";
 import Orders from "../components/Orders";
 import Clients from "../components/Clients";
+import Costs from "../components/Costs";
 
 type ActivePanel =
   | "dashboard"
@@ -115,12 +116,7 @@ export default function Home() {
         return <Clients />;
 
       case "costs":
-        return (
-          <ComingSoon
-            title="Koszty"
-            description="Moduł kosztów będzie zbierał koszty produktów, receptur, opakowań i pozostałych elementów potrzebnych do wyliczenia ceny tortu."
-          />
-        );
+        return <Costs />;
 
       case "dashboard":
       default:
