@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -32,7 +33,6 @@ export default function Gallery() {
   const [search, setSearch] = useState("");
   const [activeModalPhoto, setActiveModalPhoto] = useState<CakePhoto | null>(null);
 
-  // Formularz
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("Urodzinowe");
   const [imageUrl, setImageUrl] = useState("");
@@ -63,7 +63,6 @@ export default function Gallery() {
     }
   }
 
-  // Obsługa wczytania pliku zdjęcia z telefonu / dysku (Base64)
   function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -188,7 +187,6 @@ export default function Gallery() {
         </div>
       )}
 
-      {/* FORMULARZ DODAWANIA ZDJĘCIA */}
       <div style={{ ...cardStyle, marginBottom: 24 }}>
         <h3 style={{ margin: "0 0 16px", fontSize: 18, color: "#292522" }}>
           + Dodaj nowe zdjęcie do portfolio
@@ -247,9 +245,8 @@ export default function Gallery() {
 
           {imageUrl && (
             <div style={{ display: "flex", alignItems: "center", gap: 14, background: "#fdfbf9", padding: 10, borderRadius: 10, border: "1px solid #eee7e0" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={imageUrl} alt="Podgląd" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8 }} />
-              <span style={{ fontSize: 12, color: "#047857", fontWeight: 600 }}>✓ Zdjęcie załadowane do podglądu</span>
+              <span style={{ fontSize: 12, color: "#047857", fontWeight: 600 }}>✓ Zdjęcie gotowe do zapisu</span>
             </div>
           )}
 
@@ -297,7 +294,6 @@ export default function Gallery() {
         </form>
       </div>
 
-      {/* FILTROWANIE I GALERIA */}
       <div style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -352,12 +348,10 @@ export default function Gallery() {
                   boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
                 }}
               >
-                {/* Obrazek z kliknięciem w podgląd */}
                 <div
                   onClick={() => setActiveModalPhoto(photo)}
                   style={{ width: "100%", height: 220, position: "relative", cursor: "pointer", background: "#f4f0ec" }}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={photo.image_url}
                     alt={photo.title}
@@ -380,7 +374,6 @@ export default function Gallery() {
                   </div>
                 </div>
 
-                {/* Opis */}
                 <div style={{ padding: 14, display: "flex", flexDirection: "column", flex: 1, justifyContent: "space-between" }}>
                   <div>
                     <h4 style={{ margin: "0 0 6px", fontSize: 16, color: "#292522" }}>{photo.title}</h4>
@@ -419,7 +412,6 @@ export default function Gallery() {
         )}
       </div>
 
-      {/* MODAL POWIĘKSZENIA ZDJĘCIA (LIGHTBOX) */}
       {activeModalPhoto && (
         <div
           onClick={() => setActiveModalPhoto(null)}
@@ -445,7 +437,6 @@ export default function Gallery() {
               boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
             }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={activeModalPhoto.image_url}
               alt={activeModalPhoto.title}
