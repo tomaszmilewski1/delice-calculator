@@ -465,53 +465,66 @@ function Dashboard({
   });
 
   useEffect(() => {
-    async function loadStats() {
-      try {
-        const [ordersRes, recipesRes, productsRes, clientsRes] = await Promise.all([
-          supabase.from("orders").select("total_price, status"),
-          supabase.from("recipes").select("id", { count: "exact", head: true }),
-          supabase.from("products").select("id", { count: "exact", head: true }),
-          supabase.from("clients").select("id", { count: "exact", head: true }),
-        ]);
-
-        const allOrders = (ordersRes.data || []) as Array<{
-          total_price: number | string | null;
-          status: string;
-        }>;
-
-        const parseVal = (v: number | string | null | undefined): number => {
-          if (v === null || v === undefined) return 0;
-          const num = Number(String(v).replace(",", ".").trim());
-          return Number.isFinite(num) ? num : 0;
-        };
-
-        const active = allOrders.filter(
-          (o) => o.status === "nowe" || o.status === "w_trakcie"
-        );
-        const activeVal = active.reduce(
-          (sum, o) => sum + parseVal(o.total_price),
-          0
-        );
-        const realizedVal = allOrders
-          .filter((o) => o.status === "zrealizowane")
-          .reduce((sum, o) => sum + parseVal(o.total_price), 0);
-
-        setStats({
-          activeOrdersCount: active.length,
-          activeOrdersValue: activeVal,
-          recipesCount: recipesRes.count || 0,
-          productsCount: productsRes.count || 0,
-          clientsCount: clientsRes.count || 0,
-          realizedRevenue: realizedVal,
-          loading: false,
-        });
-      } catch {
-        setStats((prev) => ({ ...prev, loading: false }));
-      }
-    }
-
     void loadStats();
   }, []);
+
+  async function loadStats() {
+    try {
+      const [ordersRes, recipesRes, productsRes, clientsRes] = await Promise.all([
+        supabase.from("orders").select("*"),
+        supabase.from("recipes").select("id", { count: "exact", head: true }),
+        supabase.from("products").select("id", { count: "exact", head: true }),
+        supabase.from("clients").select("id", { count: "exact", head: true }),
+      ]);
+
+      const allOrders = (ordersRes.data || []) as any[];
+
+      const parseVal = (v: any): number => {
+        if (v === null || v === undefined || v === "") return 0;
+        if (typeof v === "number") return v;
+        const num = Number(String(v).replace(",", ".").replace(/[^0-9.-]+/g, "").trim());
+        return Number.isFinite(num) ? num : 0;
+      };
+
+      const active = allOrders.filter((o) => {
+        const s = String(o.status || "").toLowerCase().trim();
+        return s === "nowe" || s === "w_trakcie" || s === "w trakcie" || s === "oczekujace";
+      });
+
+      const activeVal = active.reduce((sum, o) => {
+        const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
+        return sum + price;
+      }, 0);
+
+      const realized = allOrders.filter((o) => {
+        const s = String(o.status || "").toLowerCase().trim();
+        return (
+          s === "zrealizowane" ||
+          s === "zrealizowano" ||
+          s === "zakonczone" ||
+          s === "odebrane" ||
+          s === "oplacone"
+        );
+      });
+
+      const realizedVal = realized.reduce((sum, o) => {
+        const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
+        return sum + price;
+      }, 0);
+
+      setStats({
+        activeOrdersCount: active.length,
+        activeOrdersValue: activeVal,
+        recipesCount: recipesRes.count || 0,
+        productsCount: productsRes.count || 0,
+        clientsCount: clientsRes.count || 0,
+        realizedRevenue: realizedVal,
+        loading: false,
+      });
+    } catch {
+      setStats((prev) => ({ ...prev, loading: false }));
+    }
+  }
 
   function formatMoney(val: number) {
     if (!Number.isFinite(val)) return "0,00 zł";
@@ -522,10 +535,10 @@ function Dashboard({
     <section>
       <div style={dashboardWelcomeStyle}>
         <div>
-          <div style={dashboardEyebrowStyle}>CENTRUM ZARZĄDZANIA</div>
+          <div style={dashboardEyebrowStyle}>DZIAŁAMY OD 21.08.2026</div>
           <h2 style={dashboardTitleStyle}>Witaj w pracowni Délice</h2>
           <p style={dashboardDescriptionStyle}>
-            Bieżące podsumowanie zamówień, wycen, bazy surowców i rentowności.
+            Bieżące podsumowanie zamówień, wycen, bazy surowców i rentowności. Działamy od 21.08.2026 r.
           </p>
         </div>
 
