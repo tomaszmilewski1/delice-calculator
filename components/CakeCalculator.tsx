@@ -164,10 +164,9 @@ export default function CakeCalculator() {
   const [height, setHeight] = useState("");
   const [portions, setPortions] = useState("");
 
-  // Śledzimy, które pole użytkownik zmienił jako ostatnie ('dimensions' lub 'portions')
   const [lastChangedSource, setLastChangedSource] = useState<"dimensions" | "portions">("dimensions");
 
-  // Koszty wyceny
+  // Koszty wyceny bazowej (dla receptury wyjściowej)
   const [laborCost, setLaborCost] = useState("20");
   const [packagingCost, setPackagingCost] = useState("15");
   const [marginPercent, setMarginPercent] = useState("35");
@@ -242,7 +241,6 @@ export default function CakeCalculator() {
   const currentHeight = height.trim() === "" ? baseHeight : parseDecimal(height);
   const currentPortions = portions.trim() === "" ? basePortions : parseDecimal(portions);
 
-  // Skala na podstawie wymiarów (objętość walca)
   const dimensionScale = useMemo(() => {
     if (
       !baseDiameter ||
@@ -260,7 +258,6 @@ export default function CakeCalculator() {
     return (currentDiameter * currentDiameter * currentHeight) / (baseDiameter * baseDiameter * baseHeight);
   }, [baseDiameter, baseHeight, currentDiameter, currentHeight]);
 
-  // Skala na podstawie liczby porcji
   const portionScale = useMemo(() => {
     if (!basePortions || !currentPortions || basePortions <= 0 || currentPortions <= 0) {
       return 1;
@@ -268,7 +265,6 @@ export default function CakeCalculator() {
     return currentPortions / basePortions;
   }, [basePortions, currentPortions]);
 
-  // Skala końcowa – reaguje na to, co zmieniono jako ostatnie
   const finalScale = useMemo(() => {
     if (lastChangedSource === "portions") {
       return portionScale > 0 ? portionScale : 1;
@@ -304,9 +300,9 @@ export default function CakeCalculator() {
     return calculatedIngredients.reduce((sum, item) => sum + item.cost, 0);
   }, [calculatedIngredients]);
 
-  // Koszty dodatkowe i marża
-  const parsedLaborCost = useMemo(() => parseDecimal(laborCost), [laborCost]);
-  const parsedPackagingCost = useMemo(() => parseDecimal(packagingCost), [packagingCost]);
+  // Skalujemy również koszty robocizny i opakowania proporcjonalnie do wielkości tortu
+  const parsedLaborCost = useMemo(() => parseDecimal(laborCost) * finalScale, [laborCost, finalScale]);
+  const parsedPackagingCost = useMemo(() => parseDecimal(packagingCost) * (finalScale > 1.5 ? 1.5 : 1), [packagingCost, finalScale]);
   const parsedMarginPercent = useMemo(() => parseDecimal(marginPercent), [marginPercent]);
 
   const totalCakeCost = useMemo(() => {
@@ -488,7 +484,7 @@ export default function CakeCalculator() {
 
               {/* DODATKOWE KOSZTY WYCENY */}
               <div style={{ marginTop: 20, borderTop: "1px solid #eee7e0", paddingTop: 16 }}>
-                <h4 style={{ margin: "0 0 12px", fontSize: 14, color: "#292522" }}>Koszty wyceny</h4>
+                <h4 style={{ margin: "0 0 12px", fontSize: 14, color: "#292522" }}>Koszty wyceny bazowej</h4>
                 <div style={threeColumnStyle}>
                   <label style={labelStyle}>
                     <span style={labelTextStyle}>Robocizna (zł)</span>
