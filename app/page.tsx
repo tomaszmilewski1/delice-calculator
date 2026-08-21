@@ -1,7 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
+import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import Recipes from "../components/Recipes";
 import Products from "../components/Products";
@@ -21,143 +20,9 @@ type ActivePanel =
   | "costs"
   | "gallery";
 
-interface DashboardStats {
-  activeOrdersCount: number;
-  activeOrdersValue: number;
-  recipesCount: number;
-  productsCount: number;
-  clientsCount: number;
-  realizedRevenue: number;
-  loading: boolean;
-}
-
-/* =========================================================================
-   HOOK: Zarządzanie sesją użytkownika
-   ========================================================================= */
-function useSession() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function initSession() {
-      try {
-        const {
-          data: { session: currentSession },
-        } = await supabase.auth.getSession();
-        if (isMounted) setSession(currentSession);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    }
-
-    void initSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      if (isMounted) {
-        setSession(currentSession);
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  return { session, loading };
-}
-
-/* =========================================================================
-   HOOK: Pobieranie i kalkulacja statystyk Dashboardu
-   ========================================================================= */
-function useDashboardStats() {
-  const [stats, setStats] = useState<DashboardStats>({
-    activeOrdersCount: 0,
-    activeOrdersValue: 0,
-    recipesCount: 0,
-    productsCount: 0,
-    clientsCount: 0,
-    realizedRevenue: 0,
-    loading: true,
-  });
-
-  const parseNumber = (val: unknown): number => {
-    if (val === null || val === undefined || val === "") return 0;
-    if (typeof val === "number") return Number.isFinite(val) ? val : 0;
-    const cleanStr = String(val).replace(",", ".").replace(/[^0-9.-]+/g, "").trim();
-    const parsed = Number(cleanStr);
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
-
-  const loadStats = useCallback(async () => {
-    setStats((prev) => ({ ...prev, loading: true }));
-
-    try {
-      const [ordersRes, recipesRes, productsRes, clientsRes] = await Promise.all([
-        supabase.from("orders").select("total_price, status"),
-        supabase.from("recipes").select("id", { count: "exact", head: true }),
-        supabase.from("products").select("id", { count: "exact", head: true }),
-        supabase.from("clients").select("id", { count: "exact", head: true }),
-      ]);
-
-      const orders = (ordersRes.data || []) as Array<{
-        total_price?: number | string | null;
-        status?: string | null;
-      }>;
-
-      let activeCount = 0;
-      let activeSum = 0;
-      let realizedSum = 0;
-
-      for (const order of orders) {
-        const rawStatus = String(order.status || "").toLowerCase().trim();
-        const price = parseNumber(order.total_price);
-
-        if (rawStatus === "nowe" || rawStatus === "w_trakcie" || rawStatus === "w trakcie" || rawStatus === "oczekujace") {
-          activeCount += 1;
-          activeSum += price;
-        } else if (
-          rawStatus === "zrealizowane" ||
-          rawStatus === "zrealizowano" ||
-          rawStatus === "zakonczone" ||
-          rawStatus === "odebrane" ||
-          rawStatus === "oplacone"
-        ) {
-          realizedSum += price;
-        }
-      }
-
-      setStats({
-        activeOrdersCount: activeCount,
-        activeOrdersValue: activeSum,
-        recipesCount: recipesRes.count || 0,
-        productsCount: productsRes.count || 0,
-        clientsCount: clientsRes.count || 0,
-        realizedRevenue: realizedSum,
-        loading: false,
-      });
-    } catch {
-      setStats((prev) => ({ ...prev, loading: false }));
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadStats();
-  }, [loadStats]);
-
-  return { stats, refetch: loadStats };
-}
-
-/* =========================================================================
-   KOMPONENT GŁÓWNY
-   ========================================================================= */
 export default function Home() {
-  const { session, loading } = useSession();
+  const [session, setSession] = useState<{ user?: { email?: string } } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -167,6 +32,30 @@ export default function Home() {
   const [activePanel, setActivePanel] = useState<ActivePanel>("dashboard");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  useEffect(() => {
+    async function checkSession() {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+
+      setSession(currentSession);
+      setLoading(false);
+    }
+
+    void checkSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      setSession(currentSession);
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoginError("");
@@ -175,6 +64,7 @@ export default function Home() {
       setLoginError("Podaj adres e-mail.");
       return;
     }
+
     if (!password) {
       setLoginError("Podaj hasło.");
       return;
@@ -577,12 +467,82 @@ function Dashboard({
   onNavigate: (panel: ActivePanel) => void;
   email?: string;
 }) {
-  const { stats } = useDashboardStats();
+  const [stats, setStats] = useState({
+    activeOrdersCount: 0,
+    activeOrdersValue: 0,
+    recipesCount: 0,
+    productsCount: 0,
+    clientsCount: 0,
+    realizedRevenue: 0,
+    loading: true,
+  });
 
-  const formatMoney = (val: number): string => {
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const [ordersRes, recipesRes, productsRes, clientsRes] = await Promise.all([
+          supabase.from("orders").select("*"),
+          supabase.from("recipes").select("id", { count: "exact", head: true }),
+          supabase.from("products").select("id", { count: "exact", head: true }),
+          supabase.from("clients").select("id", { count: "exact", head: true }),
+        ]);
+
+        const allOrders = (ordersRes.data || []) as any[];
+
+        const parseVal = (v: any): number => {
+          if (v === null || v === undefined || v === "") return 0;
+          if (typeof v === "number") return v;
+          const num = Number(String(v).replace(",", ".").replace(/[^0-9.-]+/g, "").trim());
+          return Number.isFinite(num) ? num : 0;
+        };
+
+        const active = allOrders.filter((o) => {
+          const s = String(o.status || "").toLowerCase().trim();
+          return s === "nowe" || s === "w_trakcie" || s === "w trakcie" || s === "oczekujace";
+        });
+
+        const activeVal = active.reduce((sum, o) => {
+          const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
+          return sum + price;
+        }, 0);
+
+        const realized = allOrders.filter((o) => {
+          const s = String(o.status || "").toLowerCase().trim();
+          return (
+            s === "zrealizowane" ||
+            s === "zrealizowano" ||
+            s === "zakonczone" ||
+            s === "odebrane" ||
+            s === "oplacone"
+          );
+        });
+
+        const realizedVal = realized.reduce((sum, o) => {
+          const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
+          return sum + price;
+        }, 0);
+
+        setStats({
+          activeOrdersCount: active.length,
+          activeOrdersValue: activeVal,
+          recipesCount: recipesRes.count || 0,
+          productsCount: productsRes.count || 0,
+          clientsCount: clientsRes.count || 0,
+          realizedRevenue: realizedVal,
+          loading: false,
+        });
+      } catch {
+        setStats((prev) => ({ ...prev, loading: false }));
+      }
+    }
+
+    void loadStats();
+  }, []);
+
+  function formatMoney(val: number) {
     if (!Number.isFinite(val)) return "0,00 zł";
     return `${val.toFixed(2).replace(".", ",")} zł`;
-  };
+  }
 
   return (
     <section>
@@ -757,10 +717,6 @@ function getPanelTitle(panel: ActivePanel) {
       return "Délice";
   }
 }
-
-/* =========================================================================
-   STYLE
-   ========================================================================= */
 
 const loginPageStyle = {
   minHeight: "100vh",
