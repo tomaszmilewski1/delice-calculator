@@ -1,436 +1,1215 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import Recipes from "../components/Recipes";
+import Products from "../components/Products";
+import CakeCalculator from "../components/CakeCalculator";
+import Orders from "../components/Orders";
+import Clients from "../components/Clients";
 
-export type Client = {
-  id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
-  notes: string | null;
-  active: boolean;
-  created_at: string;
-};
+type ActivePanel =
+  | "dashboard"
+  | "new-cake"
+  | "products"
+  | "recipes"
+  | "orders"
+  | "clients"
+  | "costs";
 
-type ClientForm = {
-  name: string;
-  phone: string;
-  email: string;
-  address: string;
-  notes: string;
-  active: boolean;
-};
-
-const emptyClientForm: ClientForm = {
-  name: "",
-  phone: "",
-  email: "",
-  address: "",
-  notes: "",
-  active: true,
-};
-
-export default function Clients() {
-  const [clients, setClients] = useState<Client[]>([]);
+export default function Home() {
+  const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<ClientForm>(emptyClientForm);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  const [activePanel, setActivePanel] =
+    useState<ActivePanel>("dashboard");
 
   useEffect(() => {
-    void loadClients();
+    checkSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      (_event, currentSession) => {
+        setSession(currentSession);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  async function loadClients() {
-    setLoading(true);
-    setError("");
+  async function checkSession() {
+    const {
+      data: { session: currentSession },
+    } = await supabase.auth.getSession();
 
-    const { data, error: clientsError } = await supabase
-      .from("clients")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (clientsError) {
-      setError(`Nie udało się pobrać bazy klientów: ${clientsError.message}`);
-      setLoading(false);
-      return;
-    }
-
-    setClients((data ?? []) as Client[]);
+    setSession(currentSession);
     setLoading(false);
   }
 
-  function updateForm(field: keyof ClientForm, value: string | boolean) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
+  async function handleLogin(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
 
-  function startEditing(client: Client) {
-    setEditingId(client.id);
-    setForm({
-      name: client.name,
-      phone: client.phone ?? "",
-      email: client.email ?? "",
-      address: client.address ?? "",
-      notes: client.notes ?? "",
-      active: client.active,
-    });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+    setLoginError("");
 
-  function cancelEditing() {
-    setEditingId(null);
-    setForm(emptyClientForm);
-    setError("");
-    setSuccess("");
-  }
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-
-    if (!form.name.trim()) {
-      setError("Podaj imię i nazwisko klienta.");
+    if (!email.trim()) {
+      setLoginError("Podaj adres e-mail.");
       return;
     }
 
-    setSaving(true);
-
-    const payload = {
-      name: form.name.trim(),
-      phone: form.phone.trim() || null,
-      email: form.email.trim() || null,
-      address: form.address.trim() || null,
-      notes: form.notes.trim() || null,
-      active: form.active,
-    };
-
-    try {
-      if (editingId) {
-        const { error: updateError } = await supabase
-          .from("clients")
-          .update(payload)
-          .eq("id", editingId);
-
-        if (updateError) throw updateError;
-        setSuccess("Dane klienta zostały zaktualizowane.");
-      } else {
-        const { error: insertError } = await supabase.from("clients").insert(payload);
-        if (insertError) throw insertError;
-        setSuccess("Nowy klient został dodany do bazy.");
-      }
-
-      setForm(emptyClientForm);
-      setEditingId(null);
-      await loadClients();
-    } catch (err: any) {
-      setError(`Błąd zapisu: ${err.message}`);
-    } finally {
-      setSaving(false);
+    if (!password) {
+      setLoginError("Podaj hasło.");
+      return;
     }
-  }
 
-  async function deleteClient(id: string, name: string) {
-    if (!window.confirm(`Czy na pewno chcesz usunąć klienta "${name}"?`)) return;
-    try {
-      const { error: delError } = await supabase.from("clients").delete().eq("id", id);
-      if (delError) throw delError;
-      setSuccess(`Klient "${name}" został usunięty.`);
-      await loadClients();
-    } catch (err: any) {
-      setError(`Błąd usuwania: ${err.message}`);
-    }
-  }
+    setLoginLoading(true);
 
-  async function toggleActive(client: Client) {
-    try {
-      const { error: toggleErr } = await supabase
-        .from("clients")
-        .update({ active: !client.active })
-        .eq("id", client.id);
-      if (toggleErr) throw toggleErr;
-      await loadClients();
-    } catch (err: any) {
-      setError(`Błąd zmiany statusu: ${err.message}`);
-    }
-  }
+    const { error } =
+      await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-  const filteredClients = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return clients.filter((c) => {
-      return (
-        !query ||
-        c.name.toLowerCase().includes(query) ||
-        (c.phone && c.phone.includes(query)) ||
-        (c.email && c.email.toLowerCase().includes(query)) ||
-        (c.address && c.address.toLowerCase().includes(query))
+    if (error) {
+      setLoginError(
+        "Nie udało się zalogować. Sprawdź e-mail i hasło."
       );
-    });
-  }, [clients, search]);
+      setLoginLoading(false);
+      return;
+    }
 
-  const cardStyle: React.CSSProperties = {
-    background: "#ffffff",
-    border: "1px solid #e9e2da",
-    borderRadius: 18,
-    padding: 24,
-    boxShadow: "0 4px 20px rgba(0,0,0,0.03)",
-  };
+    setLoginLoading(false);
+    setActivePanel("dashboard");
+  }
 
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "10px 12px",
-    borderRadius: 9,
-    border: "1px solid #ddd3c9",
-    fontSize: 14,
-    background: "#fff",
-    color: "#292522",
-  };
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    setActivePanel("dashboard");
+  }
 
-  const labelStyle: React.CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#514b46",
-  };
+  function renderPanel() {
+    switch (activePanel) {
+      case "products":
+        return <Products />;
 
-  const buttonStyle: React.CSSProperties = {
-    border: "none",
-    borderRadius: 10,
-    padding: "10px 16px",
-    fontWeight: 700,
-    cursor: "pointer",
-  };
+      case "recipes":
+        return <Recipes />;
 
-  return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", paddingBottom: 60 }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ color: "#8a6d4b", fontSize: 11, fontWeight: 700, letterSpacing: 2 }}>
-          BAZA KLIENTÓW
-        </div>
-        <h2 style={{ margin: "4px 0 0", fontSize: 28, color: "#292522" }}>Klienci</h2>
-        <p style={{ margin: "6px 0 0", color: "#716b65" }}>
-          Przechowuj kontakty, preferencje smakowe, alergie i historię kontaktów z klientami.
-        </p>
-      </div>
+      case "new-cake":
+        return <CakeCalculator />;
 
-      {error && (
-        <div style={{ padding: 14, background: "#fee2e2", color: "#b91c1c", borderRadius: 12, marginBottom: 20 }}>
-          {error}
-        </div>
-      )}
+      case "orders":
+        return <Orders />;
 
-      {success && (
-        <div style={{ padding: 14, background: "#ecfdf5", color: "#047857", borderRadius: 12, marginBottom: 20 }}>
-          {success}
-        </div>
-      )}
+      case "clients":
+        return <Clients />;
 
-      {/* FORMULARZ KLIENTA */}
-      <div style={{ ...cardStyle, marginBottom: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>
-            {editingId ? "Edytuj dane klienta" : "+ Dodaj nowego klienta"}
-          </h3>
-          {editingId && (
-            <button
-              type="button"
-              onClick={cancelEditing}
-              style={{ ...buttonStyle, background: "#f3f4f6", color: "#374151" }}
-            >
-              Anuluj
-            </button>
-          )}
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-            <label style={labelStyle}>
-              Imię i nazwisko *
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => updateForm("name", e.target.value)}
-                placeholder="np. Anna Kowalska"
-                required
-                style={inputStyle}
-              />
-            </label>
-
-            <label style={labelStyle}>
-              Telefon kontaktowy
-              <input
-                type="tel"
-                value={form.phone}
-                onChange={(e) => updateForm("phone", e.target.value)}
-                placeholder="np. 500 600 700"
-                style={inputStyle}
-              />
-            </label>
-
-            <label style={labelStyle}>
-              Adres e-mail
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => updateForm("email", e.target.value)}
-                placeholder="np. anna@gmail.com"
-                style={inputStyle}
-              />
-            </label>
-
-            <label style={labelStyle}>
-              Adres / Miasto
-              <input
-                type="text"
-                value={form.address}
-                onChange={(e) => updateForm("address", e.target.value)}
-                placeholder="np. Białystok, ul. Lipowa 5"
-                style={inputStyle}
-              />
-            </label>
-          </div>
-
-          <label style={labelStyle}>
-            Notatki / Alergie / Preferencje klienta
-            <textarea
-              rows={2}
-              value={form.notes}
-              onChange={(e) => updateForm("notes", e.target.value)}
-              placeholder="np. Stała klientka, bezglutenowe biszkopty, preferuje mniej słodkie kremy..."
-              style={{ ...inputStyle, resize: "vertical" }}
-            />
-          </label>
-
-          <button
-            type="submit"
-            disabled={saving}
-            style={{
-              ...buttonStyle,
-              background: "#8a6d4b",
-              color: "#ffffff",
-              marginTop: 6,
-              fontSize: 15,
-            }}
-          >
-            {saving ? "Zapisywanie..." : editingId ? "Zapisz zmiany" : "+ Dodaj klienta"}
-          </button>
-        </form>
-      </div>
-
-      {/* LISTA KLIENTÓW */}
-      <div style={cardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>
-            Lista klientów ({filteredClients.length})
-          </h3>
-
-          <input
-            type="text"
-            placeholder="Szukaj po nazwisku, telefonie, adresie..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ ...inputStyle, width: 280 }}
+      case "costs":
+        return (
+          <ComingSoon
+            title="Koszty"
+            description="Moduł kosztów będzie zbierał koszty produktów, receptur, opakowań i pozostałych elementów potrzebnych do wyliczenia ceny tortu."
           />
-        </div>
+        );
 
-        {loading ? (
-          <div style={{ textAlign: "center", padding: 30, color: "#716b65" }}>Ładowanie klientów...</div>
-        ) : filteredClients.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 40, border: "1px dashed #ddd3c9", borderRadius: 12, color: "#8a837d" }}>
-            Brak klientów w bazie.
+      case "dashboard":
+      default:
+        return (
+          <Dashboard
+            onNavigate={setActivePanel}
+            email={session?.user?.email}
+          />
+        );
+    }
+  }
+
+  if (loading) {
+    return (
+      <main style={loadingPageStyle}>
+        <div style={loadingCardStyle}>
+          <div style={loginLogoStyle}>D</div>
+          <strong>Délice</strong>
+          <span>Ładowanie aplikacji...</span>
+        </div>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <main style={loginPageStyle}>
+        <div style={loginWrapperStyle}>
+          <div style={loginBrandStyle}>
+            <div style={loginLogoStyle}>D</div>
+
+            <div>
+              <div style={loginBrandNameStyle}>
+                Délice
+              </div>
+
+              <div style={loginBrandSubtitleStyle}>
+                Kalkulator tortów
+              </div>
+            </div>
           </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
-            {filteredClients.map((client) => (
-              <div
-                key={client.id}
+
+          <div style={loginCardStyle}>
+            <div style={loginHeaderStyle}>
+              <div style={loginEyebrowStyle}>
+                PANEL ADMINISTRACYJNY
+              </div>
+
+              <h1 style={loginTitleStyle}>
+                Zaloguj się
+              </h1>
+
+              <p style={loginDescriptionStyle}>
+                Zaloguj się, aby korzystać z kalkulatora
+                tortów, receptur i bazy produktów.
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin}>
+              <label style={loginLabelStyle}>
+                <span style={loginLabelTextStyle}>
+                  E-mail
+                </span>
+
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) =>
+                    setEmail(event.target.value)
+                  }
+                  placeholder="twoj@email.pl"
+                  autoComplete="email"
+                  disabled={loginLoading}
+                  style={loginInputStyle}
+                />
+              </label>
+
+              <label style={loginLabelStyle}>
+                <span style={loginLabelTextStyle}>
+                  Hasło
+                </span>
+
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) =>
+                    setPassword(event.target.value)
+                  }
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  disabled={loginLoading}
+                  style={loginInputStyle}
+                />
+              </label>
+
+              {loginError && (
+                <div style={loginErrorStyle}>
+                  {loginError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loginLoading}
                 style={{
-                  border: "1px solid #eee7e0",
-                  borderRadius: 14,
-                  padding: 18,
-                  background: client.active ? "#fdfbf9" : "#f9fafb",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  gap: 12,
+                  ...loginButtonStyle,
+                  opacity: loginLoading ? 0.7 : 1,
+                  cursor: loginLoading
+                    ? "not-allowed"
+                    : "pointer",
                 }}
               >
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                    <h4 style={{ margin: 0, fontSize: 18, color: "#292522" }}>
-                      {client.name}
-                    </h4>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: "2px 7px",
-                        borderRadius: 6,
-                        background: client.active ? "#dcfce7" : "#e5e7eb",
-                        color: client.active ? "#166534" : "#4b5563",
-                      }}
-                    >
-                      {client.active ? "AKTYWNY" : "NIEAKTYWNY"}
-                    </span>
-                  </div>
-
-                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: "#716b65" }}>
-                    {client.phone && <div>📞 {client.phone}</div>}
-                    {client.email && <div>✉️ {client.email}</div>}
-                    {client.address && <div>📍 {client.address}</div>}
-                  </div>
-
-                  {client.notes && (
-                    <div style={{ marginTop: 10, background: "#ffffff", padding: 8, borderRadius: 8, fontSize: 12, color: "#514b46", border: "1px solid #eee7e0" }}>
-                      {client.notes}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: "flex", gap: 8, borderTop: "1px solid #eee7e0", paddingTop: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => startEditing(client)}
-                    style={{ ...buttonStyle, background: "#f3f4f6", color: "#374151", padding: "6px 12px", fontSize: 12 }}
-                  >
-                    Edytuj
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => toggleActive(client)}
-                    style={{
-                      ...buttonStyle,
-                      background: client.active ? "#fef3c7" : "#dcfce7",
-                      color: client.active ? "#92400e" : "#166534",
-                      padding: "6px 12px",
-                      fontSize: 12,
-                    }}
-                  >
-                    {client.active ? "Dezaktywuj" : "Aktywuj"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => deleteClient(client.id, client.name)}
-                    style={{ ...buttonStyle, background: "#fee2e2", color: "#b91c1c", padding: "6px 12px", fontSize: 12 }}
-                  >
-                    Usuń
-                  </button>
-                </div>
-              </div>
-            ))}
+                {loginLoading
+                  ? "Logowanie..."
+                  : "Zaloguj się"}
+              </button>
+            </form>
           </div>
-        )}
+
+          <div style={loginFooterStyle}>
+            Délice by Milewska
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main style={appPageStyle}>
+      <div style={appShellStyle}>
+        <aside className="delice-no-print" style={sidebarStyle}>
+          <div style={brandStyle}>
+            <div style={brandLogoStyle}>D</div>
+
+            <div>
+              <div style={brandNameStyle}>
+                Délice
+              </div>
+
+              <div style={brandSubtitleStyle}>
+                Kalkulator tortów
+              </div>
+            </div>
+          </div>
+
+          <nav style={navStyle}>
+            <NavButton
+              active={activePanel === "dashboard"}
+              onClick={() =>
+                setActivePanel("dashboard")
+              }
+              icon="⌂"
+              label="Dashboard"
+            />
+
+            <NavButton
+              active={activePanel === "new-cake"}
+              onClick={() =>
+                setActivePanel("new-cake")
+              }
+              icon="+"
+              label="Nowy tort"
+              primary
+            />
+
+            <div style={navSectionStyle}>
+              KALKULATOR
+            </div>
+
+            <NavButton
+              active={activePanel === "recipes"}
+              onClick={() =>
+                setActivePanel("recipes")
+              }
+              icon="R"
+              label="Receptury"
+            />
+
+            <NavButton
+              active={activePanel === "products"}
+              onClick={() =>
+                setActivePanel("products")
+              }
+              icon="P"
+              label="Produkty"
+            />
+
+            <div style={navSectionStyle}>
+              ZARZĄDZANIE
+            </div>
+
+            <NavButton
+              active={activePanel === "orders"}
+              onClick={() =>
+                setActivePanel("orders")
+              }
+              icon="O"
+              label="Zamówienia"
+            />
+
+            <NavButton
+              active={activePanel === "clients"}
+              onClick={() =>
+                setActivePanel("clients")
+              }
+              icon="K"
+              label="Klienci"
+            />
+
+            <NavButton
+              active={activePanel === "costs"}
+              onClick={() =>
+                setActivePanel("costs")
+              }
+              icon="Z"
+              label="Koszty"
+            />
+          </nav>
+
+          <div style={sidebarBottomStyle}>
+            <div style={userCardStyle}>
+              <div style={userAvatarStyle}>
+                {session?.user?.email
+                  ?.charAt(0)
+                  .toUpperCase() || "U"}
+              </div>
+
+              <div style={userInfoStyle}>
+                <strong style={userEmailStyle}>
+                  {session?.user?.email || "Użytkownik"}
+                </strong>
+
+                <span style={userRoleStyle}>
+                  Administrator
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={logoutButtonStyle}
+            >
+              <span>↪</span>
+              Wyloguj się
+            </button>
+          </div>
+        </aside>
+
+        <section style={mainContentStyle}>
+          <header className="delice-no-print" style={topbarStyle}>
+            <div>
+              <div style={topbarEyebrowStyle}>
+                DÉLICE
+              </div>
+
+              <h1 style={topbarTitleStyle}>
+                {getPanelTitle(activePanel)}
+              </h1>
+            </div>
+
+            <div style={topbarRightStyle}>
+              <div style={statusIndicatorStyle}>
+                <span style={statusDotStyle} />
+                System aktywny
+              </div>
+            </div>
+          </header>
+
+          <div style={contentStyle}>
+            {renderPanel()}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function NavButton({
+  active,
+  onClick,
+  icon,
+  label,
+  primary = false,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: string;
+  label: string;
+  primary?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...navButtonStyle,
+        ...(active ? navButtonActiveStyle : {}),
+        ...(primary ? navPrimaryButtonStyle : {}),
+      }}
+    >
+      <span
+        style={{
+          ...navIconStyle,
+          ...(active ? navIconActiveStyle : {}),
+        }}
+      >
+        {icon}
+      </span>
+
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function Dashboard({
+  onNavigate,
+  email,
+}: {
+  onNavigate: (panel: ActivePanel) => void;
+  email?: string;
+}) {
+  return (
+    <section>
+      <div style={dashboardWelcomeStyle}>
+        <div>
+          <div style={dashboardEyebrowStyle}>
+            PANEL GŁÓWNY
+          </div>
+
+          <h2 style={dashboardTitleStyle}>
+            Witaj w kalkulatorze Délice
+          </h2>
+
+          <p style={dashboardDescriptionStyle}>
+            Zarządzaj recepturami, produktami i
+            przygotowuj kalkulacje tortów w jednym
+            miejscu.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onNavigate("new-cake")}
+          style={dashboardPrimaryButtonStyle}
+        >
+          + Nowy tort
+        </button>
+      </div>
+
+      <div style={dashboardGridStyle}>
+        <DashboardCard
+          icon="R"
+          title="Receptury"
+          description="Twórz receptury i automatycznie wyliczaj ich koszt."
+          action="Otwórz receptury"
+          onClick={() => onNavigate("recipes")}
+        />
+
+        <DashboardCard
+          icon="P"
+          title="Produkty"
+          description="Zarządzaj bazą produktów, opakowaniami i cenami."
+          action="Otwórz produkty"
+          onClick={() => onNavigate("products")}
+        />
+
+        <DashboardCard
+          icon="O"
+          title="Zamówienia"
+          description="Przygotuj moduł do obsługi zamówień klientów."
+          action="Zamówienia"
+          onClick={() => onNavigate("orders")}
+        />
+
+        <DashboardCard
+          icon="K"
+          title="Klienci"
+          description="Baza klientów i historia realizowanych zamówień."
+          action="Klienci"
+          onClick={() => onNavigate("clients")}
+        />
+      </div>
+
+      <div style={quickStartStyle}>
+        <div style={quickStartIconStyle}>D</div>
+
+        <div>
+          <strong style={quickStartTitleStyle}>
+            Zalogowano jako
+          </strong>
+
+          <p style={quickStartTextStyle}>
+            {email || "Użytkownik"}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardCard({
+  icon,
+  title,
+  description,
+  action,
+  onClick,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  action: string;
+  onClick: () => void;
+}) {
+  return (
+    <div style={dashboardCardStyle}>
+      <div style={dashboardCardIconStyle}>
+        {icon}
+      </div>
+
+      <h3 style={dashboardCardTitleStyle}>
+        {title}
+      </h3>
+
+      <p style={dashboardCardDescriptionStyle}>
+        {description}
+      </p>
+
+      <button
+        type="button"
+        onClick={onClick}
+        style={dashboardCardButtonStyle}
+      >
+        {action} →
+      </button>
+    </div>
+  );
+}
+
+function ComingSoon({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={comingSoonCardStyle}>
+      <div style={comingSoonIconStyle}>D</div>
+
+      <div style={comingSoonEyebrowStyle}>
+        MODUŁ
+      </div>
+
+      <h2 style={comingSoonTitleStyle}>
+        {title}
+      </h2>
+
+      <p style={comingSoonDescriptionStyle}>
+        {description}
+      </p>
+
+      <div style={comingSoonBadgeStyle}>
+        Przygotujemy w kolejnym etapie
       </div>
     </div>
   );
 }
+
+function getPanelTitle(panel: ActivePanel) {
+  switch (panel) {
+    case "dashboard":
+      return "Dashboard";
+    case "new-cake":
+      return "Nowy tort";
+    case "products":
+      return "Produkty";
+    case "recipes":
+      return "Receptury";
+    case "orders":
+      return "Zamówienia";
+    case "clients":
+      return "Klienci";
+    case "costs":
+      return "Koszty";
+    default:
+      return "Délice";
+  }
+}
+
+/* =========================
+   LOGIN
+========================= */
+
+const loginPageStyle = {
+  minHeight: "100vh",
+  background:
+    "linear-gradient(135deg, #f7f4f1 0%, #eee6dd 100%)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "30px",
+  boxSizing: "border-box" as const,
+  fontFamily:
+    "Arial, Helvetica, sans-serif",
+};
+
+const loginWrapperStyle = {
+  width: "100%",
+  maxWidth: "430px",
+};
+
+const loginBrandStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "13px",
+  marginBottom: "24px",
+};
+
+const loginLogoStyle = {
+  width: "48px",
+  height: "48px",
+  borderRadius: "14px",
+  background: "#8a6d4b",
+  color: "#ffffff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "24px",
+  fontWeight: 700,
+};
+
+const loginBrandNameStyle = {
+  color: "#292522",
+  fontSize: "22px",
+  fontWeight: 700,
+};
+
+const loginBrandSubtitleStyle = {
+  color: "#8a837d",
+  fontSize: "11px",
+  marginTop: "2px",
+};
+
+const loginCardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "20px",
+  padding: "32px",
+  boxShadow: "0 15px 50px rgba(80, 60, 40, 0.08)",
+};
+
+const loginHeaderStyle = {
+  marginBottom: "24px",
+};
+
+const loginEyebrowStyle = {
+  color: "#8a6d4b",
+  fontSize: "10px",
+  fontWeight: 700,
+  letterSpacing: "2px",
+  marginBottom: "8px",
+};
+
+const loginTitleStyle = {
+  margin: 0,
+  color: "#292522",
+  fontSize: "28px",
+};
+
+const loginDescriptionStyle = {
+  color: "#716b65",
+  fontSize: "13px",
+  lineHeight: 1.6,
+  margin: "8px 0 0",
+};
+
+const loginLabelStyle = {
+  display: "block",
+  marginBottom: "16px",
+};
+
+const loginLabelTextStyle = {
+  display: "block",
+  color: "#514b46",
+  fontSize: "13px",
+  fontWeight: 600,
+  marginBottom: "7px",
+};
+
+const loginInputStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  border: "1px solid #ddd3c9",
+  borderRadius: "10px",
+  padding: "12px 13px",
+  background: "#ffffff",
+  color: "#292522",
+  fontSize: "14px",
+  outline: "none",
+};
+
+const loginErrorStyle = {
+  background: "#fff1f0",
+  border: "1px solid #e7b8b3",
+  color: "#9b4d43",
+  borderRadius: "9px",
+  padding: "11px",
+  marginBottom: "14px",
+  fontSize: "13px",
+};
+
+const loginButtonStyle = {
+  width: "100%",
+  border: "none",
+  borderRadius: "10px",
+  padding: "13px",
+  background: "#8a6d4b",
+  color: "#ffffff",
+  fontSize: "14px",
+  fontWeight: 700,
+};
+
+const loginFooterStyle = {
+  textAlign: "center" as const,
+  color: "#9a928b",
+  fontSize: "11px",
+  marginTop: "18px",
+};
+
+/* =========================
+   APP
+========================= */
+
+const appPageStyle = {
+  minHeight: "100vh",
+  background: "#f7f4f1",
+  fontFamily:
+    "Arial, Helvetica, sans-serif",
+};
+
+const appShellStyle = {
+  minHeight: "100vh",
+  display: "flex",
+};
+
+const sidebarStyle = {
+  width: "250px",
+  minHeight: "100vh",
+  background: "#ffffff",
+  borderRight: "1px solid #e9e2da",
+  display: "flex",
+  flexDirection: "column" as const,
+  boxSizing: "border-box" as const,
+  padding: "22px 15px",
+  flexShrink: 0,
+};
+
+const brandStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "11px",
+  padding: "4px 9px 24px",
+};
+
+const brandLogoStyle = {
+  width: "42px",
+  height: "42px",
+  borderRadius: "12px",
+  background: "#8a6d4b",
+  color: "#ffffff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 700,
+  fontSize: "21px",
+};
+
+const brandNameStyle = {
+  color: "#292522",
+  fontSize: "18px",
+  fontWeight: 700,
+};
+
+const brandSubtitleStyle = {
+  color: "#9a928b",
+  fontSize: "10px",
+  marginTop: "2px",
+};
+
+const navStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "5px",
+};
+
+const navSectionStyle = {
+  color: "#aaa19a",
+  fontSize: "9px",
+  fontWeight: 700,
+  letterSpacing: "1.5px",
+  margin: "18px 10px 5px",
+};
+
+const navButtonStyle = {
+  width: "100%",
+  border: "none",
+  borderRadius: "10px",
+  background: "transparent",
+  color: "#716b65",
+  padding: "10px 11px",
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  textAlign: "left" as const,
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const navButtonActiveStyle = {
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+};
+
+const navPrimaryButtonStyle = {
+  background: "#8a6d4b",
+  color: "#ffffff",
+  marginBottom: "5px",
+};
+
+const navIconStyle = {
+  width: "27px",
+  height: "27px",
+  borderRadius: "8px",
+  background: "#f4f0ec",
+  color: "#8a837d",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "12px",
+  fontWeight: 700,
+  flexShrink: 0,
+};
+
+const navIconActiveStyle = {
+  background: "#ffffff",
+  color: "#8a6d4b",
+};
+
+const sidebarBottomStyle = {
+  marginTop: "auto",
+  paddingTop: "20px",
+  borderTop: "1px solid #eee7e0",
+};
+
+const userCardStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "9px",
+  padding: "8px 5px",
+  marginBottom: "7px",
+};
+
+const userAvatarStyle = {
+  width: "34px",
+  height: "34px",
+  borderRadius: "10px",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 700,
+  fontSize: "13px",
+  flexShrink: 0,
+};
+
+const userInfoStyle = {
+  minWidth: 0,
+};
+
+const userEmailStyle = {
+  display: "block",
+  color: "#514b46",
+  fontSize: "11px",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap" as const,
+  maxWidth: "175px",
+};
+
+const userRoleStyle = {
+  display: "block",
+  color: "#aaa19a",
+  fontSize: "10px",
+  marginTop: "2px",
+};
+
+const logoutButtonStyle = {
+  width: "100%",
+  border: "1px solid #e9e2da",
+  borderRadius: "9px",
+  background: "#ffffff",
+  color: "#716b65",
+  padding: "9px 11px",
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  cursor: "pointer",
+  fontSize: "12px",
+};
+
+const mainContentStyle = {
+  flex: 1,
+  minWidth: 0,
+};
+
+const topbarStyle = {
+  height: "76px",
+  background: "#ffffff",
+  borderBottom: "1px solid #e9e2da",
+  padding: "0 30px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  boxSizing: "border-box" as const,
+};
+
+const topbarEyebrowStyle = {
+  color: "#aaa19a",
+  fontSize: "9px",
+  fontWeight: 700,
+  letterSpacing: "1.5px",
+  marginBottom: "3px",
+};
+
+const topbarTitleStyle = {
+  margin: 0,
+  color: "#292522",
+  fontSize: "21px",
+};
+
+const topbarRightStyle = {
+  display: "flex",
+  alignItems: "center",
+};
+
+const statusIndicatorStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "7px",
+  color: "#716b65",
+  fontSize: "11px",
+};
+
+const statusDotStyle = {
+  width: "7px",
+  height: "7px",
+  borderRadius: "50%",
+  background: "#477451",
+};
+
+const contentStyle = {
+  padding: "30px",
+  boxSizing: "border-box" as const,
+  maxWidth: "1600px",
+};
+
+/* =========================
+   DASHBOARD
+========================= */
+
+const dashboardWelcomeStyle = {
+  background:
+    "linear-gradient(135deg, #ffffff 0%, #fbf8f5 100%)",
+  border: "1px solid #e9e2da",
+  borderRadius: "18px",
+  padding: "28px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "20px",
+  marginBottom: "20px",
+};
+
+const dashboardEyebrowStyle = {
+  color: "#8a6d4b",
+  fontSize: "10px",
+  fontWeight: 700,
+  letterSpacing: "2px",
+  marginBottom: "7px",
+};
+
+const dashboardTitleStyle = {
+  margin: 0,
+  color: "#292522",
+  fontSize: "26px",
+};
+
+const dashboardDescriptionStyle = {
+  margin: "8px 0 0",
+  color: "#716b65",
+  fontSize: "13px",
+  lineHeight: 1.6,
+  maxWidth: "650px",
+};
+
+const dashboardPrimaryButtonStyle = {
+  border: "none",
+  borderRadius: "10px",
+  background: "#8a6d4b",
+  color: "#ffffff",
+  padding: "12px 18px",
+  fontSize: "13px",
+  fontWeight: 700,
+  cursor: "pointer",
+  whiteSpace: "nowrap" as const,
+};
+
+const dashboardGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(4, minmax(0, 1fr))",
+  gap: "15px",
+};
+
+const dashboardCardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "16px",
+  padding: "20px",
+};
+
+const dashboardCardIconStyle = {
+  width: "38px",
+  height: "38px",
+  borderRadius: "11px",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 700,
+  fontSize: "14px",
+  marginBottom: "14px",
+};
+
+const dashboardCardTitleStyle = {
+  margin: 0,
+  color: "#292522",
+  fontSize: "16px",
+};
+
+const dashboardCardDescriptionStyle = {
+  color: "#8a837d",
+  fontSize: "12px",
+  lineHeight: 1.5,
+  minHeight: "54px",
+};
+
+const dashboardCardButtonStyle = {
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  color: "#8a6d4b",
+  fontSize: "12px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const quickStartStyle = {
+  marginTop: "20px",
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "16px",
+  padding: "18px",
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+};
+
+const quickStartIconStyle = {
+  width: "38px",
+  height: "38px",
+  borderRadius: "11px",
+  background: "#f0f8f2",
+  color: "#477451",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 700,
+};
+
+const quickStartTitleStyle = {
+  display: "block",
+  color: "#514b46",
+  fontSize: "12px",
+};
+
+const quickStartTextStyle = {
+  margin: "3px 0 0",
+  color: "#8a837d",
+  fontSize: "12px",
+};
+
+/* =========================
+   COMING SOON
+========================= */
+
+const comingSoonCardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "18px",
+  padding: "55px 30px",
+  textAlign: "center" as const,
+  maxWidth: "700px",
+  margin: "20px auto",
+};
+
+const comingSoonIconStyle = {
+  width: "58px",
+  height: "58px",
+  borderRadius: "17px",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "23px",
+  fontWeight: 700,
+  margin: "0 auto 18px",
+};
+
+const comingSoonEyebrowStyle = {
+  color: "#8a6d4b",
+  fontSize: "10px",
+  fontWeight: 700,
+  letterSpacing: "2px",
+};
+
+const comingSoonTitleStyle = {
+  margin: "7px 0 0",
+  color: "#292522",
+  fontSize: "24px",
+};
+
+const comingSoonDescriptionStyle = {
+  color: "#716b65",
+  fontSize: "13px",
+  lineHeight: 1.7,
+  maxWidth: "570px",
+  margin: "10px auto 20px",
+};
+
+const comingSoonBadgeStyle = {
+  display: "inline-block",
+  background: "#f2ebe4",
+  color: "#8a6d4b",
+  borderRadius: "20px",
+  padding: "8px 13px",
+  fontSize: "11px",
+  fontWeight: 600,
+};
+
+/* =========================
+   LOADING
+========================= */
+
+const loadingPageStyle = {
+  minHeight: "100vh",
+  background: "#f7f4f1",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontFamily:
+    "Arial, Helvetica, sans-serif",
+};
+
+const loadingCardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e9e2da",
+  borderRadius: "16px",
+  padding: "30px 40px",
+  display: "flex",
+  flexDirection: "column" as const,
+  alignItems: "center",
+  gap: "8px",
+  color: "#716b65",
+  fontSize: "13px",
+};
