@@ -5,82 +5,101 @@ import { supabase } from "../lib/supabase";
 
 export type Order = {
   id: string;
+  client_id?: string | null;
   client_name: string;
   client_phone: string | null;
-  delivery_date: string;
-  delivery_time: string | null;
+  client_address: string | null;
   cake_name: string;
-  diameter_cm: number | null;
-  height_cm: number | null;
-  portions: number | null;
-  description: string | null;
+  diameter_cm: number;
+  height_cm: number;
+  portions: number;
   total_price: number;
-  advance_payment: number;
+  deposit: number;
+  delivery_date: string;
   status: "nowe" | "w_trakcie" | "zrealizowane" | "anulowane";
+  notes: string | null;
   created_at: string;
 };
 
+type ClientOption = {
+  id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  notes: string | null;
+};
+
 type OrderForm = {
+  client_id: string;
   client_name: string;
   client_phone: string;
-  delivery_date: string;
-  delivery_time: string;
+  client_address: string;
   cake_name: string;
   diameter_cm: string;
   height_cm: string;
   portions: string;
-  description: string;
   total_price: string;
-  advance_payment: string;
+  deposit: string;
+  delivery_date: string;
   status: "nowe" | "w_trakcie" | "zrealizowane" | "anulowane";
+  notes: string;
 };
 
 const emptyOrderForm: OrderForm = {
+  client_id: "",
   client_name: "",
   client_phone: "",
-  delivery_date: new Date().toISOString().split("T")[0],
-  delivery_time: "14:00",
+  client_address: "",
   cake_name: "",
-  diameter_cm: "20",
-  height_cm: "10",
-  portions: "12",
-  description: "",
+  diameter_cm: "18",
+  height_cm: "12",
+  portions: "14",
   total_price: "",
-  advance_payment: "0",
+  deposit: "0",
+  delivery_date: new Date().toISOString().slice(0, 10),
   status: "nowe",
+  notes: "",
 };
 
 export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [clients, setClients] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<OrderForm>(emptyOrderForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    void loadOrders();
+    void loadData();
   }, []);
 
-  async function loadOrders() {
+  async function loadData() {
     setLoading(true);
     setError("");
 
-    const { data, error: ordersError } = await supabase
-      .from("orders")
-      .select("*")
-      .order("delivery_date", { ascending: true });
+    const [ordersRes, clientsRes] = await Promise.all([
+      supabase.from("orders").select("*").order("delivery_date", { ascending: true }),
+      supabase.from("clients").select("id, name, phone, address, notes").order("name", { ascending: true }),
+    ]);
 
-    if (ordersError) {
-      setError(`Nie udało się pobrać zamówień: ${ordersError.message}`);
+    if (ordersRes.error) {
+      setError(`Nie udało się pobrać zamówień: ${ordersRes.error.message}`);
       setLoading(false);
       return;
     }
 
-    setOrders((data ?? []) as Order[]);
+    if (clientsRes.error) {
+      setError(`Nie udało się pobrać bazy klientów: ${clientsRes.error.message}`);
+      setLoading(false);
+      return;
+    }
+
+    setOrders((ordersRes.data ?? []) as Order[]);
+    setClients((clientsRes.data ?? []) as ClientOption[]);
     setLoading(false);
   }
 
@@ -99,21 +118,48 @@ export default function Orders() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function handleClientSelect(clientId: string) {
+    if (!clientId) {
+      setForm((prev) => ({
+        ...prev,
+        client_id: "",
+      }));
+      return;
+    }
+
+    const selected = clients.find((c) => c.id === clientId);
+    if (selected) {
+      setForm((prev) => ({
+        ...prev,
+        client_id: selected.id,
+        client_name: selected.name,
+        client_phone: selected.phone || "",
+        client_address: selected.address || "",
+        notes: prev.notes
+          ? prev.notes
+          : selected.notes
+          ? `Uwagi klienta: ${selected.notes}`
+          : "",
+      }));
+    }
+  }
+
   function startEditing(order: Order) {
     setEditingId(order.id);
     setForm({
+      client_id: order.client_id || "",
       client_name: order.client_name,
       client_phone: order.client_phone ?? "",
-      delivery_date: order.delivery_date,
-      delivery_time: order.delivery_time ?? "14:00",
+      client_address: order.client_address ?? "",
       cake_name: order.cake_name,
-      diameter_cm: order.diameter_cm ? String(order.diameter_cm).replace(".", ",") : "",
-      height_cm: order.height_cm ? String(order.height_cm).replace(".", ",") : "",
-      portions: order.portions ? String(order.portions).replace(".", ",") : "",
-      description: order.description ?? "",
+      diameter_cm: String(order.diameter_cm),
+      height_cm: String(order.height_cm),
+      portions: String(order.portions),
       total_price: String(order.total_price).replace(".", ","),
-      advance_payment: String(order.advance_payment).replace(".", ","),
+      deposit: String(order.deposit).replace(".", ","),
+      delivery_date: order.delivery_date,
       status: order.status,
+      notes: order.notes ?? "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -134,12 +180,14 @@ export default function Orders() {
       setError("Podaj imię i nazwisko klienta.");
       return;
     }
+
     if (!form.cake_name.trim()) {
       setError("Podaj nazwę tortu.");
       return;
     }
+
     if (!form.delivery_date) {
-      setError("Wybierz datę odbioru / realizacji.");
+      setError("Wybierz datę realizacji / wydania tortu.");
       return;
     }
 
@@ -148,16 +196,16 @@ export default function Orders() {
     const payload = {
       client_name: form.client_name.trim(),
       client_phone: form.client_phone.trim() || null,
-      delivery_date: form.delivery_date,
-      delivery_time: form.delivery_time.trim() || null,
+      client_address: form.client_address.trim() || null,
       cake_name: form.cake_name.trim(),
-      diameter_cm: parseDecimal(form.diameter_cm) || null,
-      height_cm: parseDecimal(form.height_cm) || null,
-      portions: parseDecimal(form.portions) || null,
-      description: form.description.trim() || null,
+      diameter_cm: Number(form.diameter_cm) || 18,
+      height_cm: Number(form.height_cm) || 12,
+      portions: Number(form.portions) || 14,
       total_price: parseDecimal(form.total_price),
-      advance_payment: parseDecimal(form.advance_payment),
+      deposit: parseDecimal(form.deposit),
+      delivery_date: form.delivery_date,
       status: form.status,
+      notes: form.notes.trim() || null,
     };
 
     try {
@@ -168,7 +216,7 @@ export default function Orders() {
           .eq("id", editingId);
 
         if (updateError) throw updateError;
-        setSuccess("Zamówienie zostało zaktualizowane.");
+        setSuccess("Zamówienie zostało pomyślnie zaktualizowane.");
       } else {
         const { error: insertError } = await supabase.from("orders").insert(payload);
         if (insertError) throw insertError;
@@ -177,7 +225,7 @@ export default function Orders() {
 
       setForm(emptyOrderForm);
       setEditingId(null);
-      await loadOrders();
+      await loadData();
     } catch (err: any) {
       setError(`Błąd zapisu: ${err.message}`);
     } finally {
@@ -185,43 +233,44 @@ export default function Orders() {
     }
   }
 
-  async function deleteOrder(id: string) {
-    if (!window.confirm("Czy na pewno chcesz usunąć to zamówienie?")) return;
+  async function updateOrderStatus(id: string, newStatus: Order["status"]) {
+    try {
+      const { error: patchError } = await supabase
+        .from("orders")
+        .update({ status: newStatus })
+        .eq("id", id);
+
+      if (patchError) throw patchError;
+      await loadData();
+    } catch (err: any) {
+      setError(`Błąd aktualizacji statusu: ${err.message}`);
+    }
+  }
+
+  async function deleteOrder(id: string, name: string) {
+    if (!window.confirm(`Czy na pewno chcesz usunąć zamówienie dla: ${name}?`)) return;
     try {
       const { error: delError } = await supabase.from("orders").delete().eq("id", id);
       if (delError) throw delError;
-      setSuccess("Zamówienie zostało usunięte.");
-      await loadOrders();
+      setSuccess(`Zamówienie dla "${name}" zostało usunięte.`);
+      await loadData();
     } catch (err: any) {
       setError(`Błąd usuwania: ${err.message}`);
     }
   }
 
-  async function updateStatus(id: string, newStatus: Order["status"]) {
-    try {
-      const { error: statusError } = await supabase
-        .from("orders")
-        .update({ status: newStatus })
-        .eq("id", id);
-      if (statusError) throw statusError;
-      await loadOrders();
-    } catch (err: any) {
-      setError(`Błąd zmiany statusu: ${err.message}`);
-    }
-  }
-
   const filteredOrders = useMemo(() => {
-    const query = search.trim().toLowerCase();
     return orders.filter((o) => {
-      const matchesSearch =
+      const matchesStatus = statusFilter === "all" || o.status === statusFilter;
+      const query = search.trim().toLowerCase();
+      const matchesQuery =
         !query ||
         o.client_name.toLowerCase().includes(query) ||
         o.cake_name.toLowerCase().includes(query) ||
         (o.client_phone && o.client_phone.includes(query));
-      const matchesStatus = statusFilter === "all" || o.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      return matchesStatus && matchesQuery;
     });
-  }, [orders, search, statusFilter]);
+  }, [orders, statusFilter, search]);
 
   const cardStyle: React.CSSProperties = {
     background: "#ffffff",
@@ -259,28 +308,15 @@ export default function Orders() {
     cursor: "pointer",
   };
 
-  function getStatusBadge(status: Order["status"]) {
-    switch (status) {
-      case "nowe":
-        return { label: "NOWE", bg: "#eff6ff", color: "#1d4ed8" };
-      case "w_trakcie":
-        return { label: "W REALIZACJI", bg: "#fefce8", color: "#a16207" };
-      case "zrealizowane":
-        return { label: "ZREALIZOWANE", bg: "#ecfdf5", color: "#047857" };
-      case "anulowane":
-        return { label: "ANULOWANE", bg: "#fee2e2", color: "#b91c1c" };
-    }
-  }
-
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", paddingBottom: 60 }}>
       <div style={{ marginBottom: 24 }}>
         <div style={{ color: "#8a6d4b", fontSize: 11, fontWeight: 700, letterSpacing: 2 }}>
-          ZARZĄDZANIE ZAMÓWIENIAMI
+          HARMONOGRAM I ZAMÓWIENIA
         </div>
-        <h2 style={{ margin: "4px 0 0", fontSize: 28, color: "#292522" }}>Baza zamówień</h2>
+        <h2 style={{ margin: "4px 0 0", fontSize: 28, color: "#292522" }}>Zamówienia</h2>
         <p style={{ margin: "6px 0 0", color: "#716b65" }}>
-          Rejestruj zamówienia klientów, terminy odbioru, zaliczki i kontroluj etapy realizacji.
+          Rejestruj zlecenia, terminy wydań, zaliczki i monitoruj realizację wypieków.
         </p>
       </div>
 
@@ -296,11 +332,11 @@ export default function Orders() {
         </div>
       )}
 
-      {/* FORMULARZ NOWEGO ZAMÓWIENIA */}
+      {/* FORMULARZ ZAMÓWIENIA */}
       <div style={{ ...cardStyle, marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>
-            {editingId ? "Edytuj zamówienie" : "+ Nowe zamówienie"}
+            {editingId ? "Edycja zamówienia" : "+ Nowe zamówienie na tort"}
           </h3>
           {editingId && (
             <button
@@ -314,9 +350,28 @@ export default function Orders() {
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Wybór z bazy klientów */}
+          <div style={{ background: "#fdfbf9", border: "1px solid #e9e2da", borderRadius: 12, padding: 16 }}>
+            <label style={labelStyle}>
+              <span>👤 Wybierz klienta z bazy (lub wpisz poniżej nowego):</span>
+              <select
+                value={form.client_id}
+                onChange={(e) => handleClientSelect(e.target.value)}
+                style={{ ...inputStyle, background: "#ffffff", fontWeight: 600 }}
+              >
+                <option value="">-- Wpisz dane klienta ręcznie --</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} {c.phone ? `(${c.phone})` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
             <label style={labelStyle}>
-              Klient (Imię i nazwisko) *
+              Imię i nazwisko klienta *
               <input
                 type="text"
                 value={form.client_name}
@@ -339,7 +394,18 @@ export default function Orders() {
             </label>
 
             <label style={labelStyle}>
-              Data odbioru *
+              Adres / Miejsce dostawy
+              <input
+                type="text"
+                value={form.client_address}
+                onChange={(e) => updateForm("client_address", e.target.value)}
+                placeholder="np. Białystok (lub odbiór własny)"
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={labelStyle}>
+              Data wydania / realizacji *
               <input
                 type="date"
                 value={form.delivery_date}
@@ -348,26 +414,16 @@ export default function Orders() {
                 style={inputStyle}
               />
             </label>
-
-            <label style={labelStyle}>
-              Godzina odbioru
-              <input
-                type="time"
-                value={form.delivery_time}
-                onChange={(e) => updateForm("delivery_time", e.target.value)}
-                style={inputStyle}
-              />
-            </label>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 14 }}>
             <label style={labelStyle}>
-              Nazwa / Rodzaj tortu *
+              Nazwa / styl tortu *
               <input
                 type="text"
                 value={form.cake_name}
                 onChange={(e) => updateForm("cake_name", e.target.value)}
-                placeholder="np. Tort Malinowy z białą czekoladą"
+                placeholder="np. Tort Urodzinowy Mango-Marakuja"
                 required
                 style={inputStyle}
               />
@@ -376,11 +432,9 @@ export default function Orders() {
             <label style={labelStyle}>
               Średnica (cm)
               <input
-                type="text"
-                inputMode="decimal"
+                type="number"
                 value={form.diameter_cm}
                 onChange={(e) => updateForm("diameter_cm", e.target.value)}
-                placeholder="20"
                 style={inputStyle}
               />
             </label>
@@ -388,42 +442,27 @@ export default function Orders() {
             <label style={labelStyle}>
               Wysokość (cm)
               <input
-                type="text"
-                inputMode="decimal"
+                type="number"
                 value={form.height_cm}
                 onChange={(e) => updateForm("height_cm", e.target.value)}
-                placeholder="10"
                 style={inputStyle}
               />
             </label>
 
             <label style={labelStyle}>
-              Liczba porcji
+              Porcje
               <input
-                type="text"
-                inputMode="decimal"
+                type="number"
                 value={form.portions}
                 onChange={(e) => updateForm("portions", e.target.value)}
-                placeholder="12"
                 style={inputStyle}
               />
             </label>
           </div>
 
-          <label style={labelStyle}>
-            Szczegóły dekoracji / Uwagi klienta
-            <textarea
-              rows={2}
-              value={form.description}
-              onChange={(e) => updateForm("description", e.target.value)}
-              placeholder="np. Topper z cyfrą 30, żywe kwiaty w odcieniach pudrowego różu, bezglutenowy biszkopt..."
-              style={{ ...inputStyle, resize: "vertical" }}
-            />
-          </label>
-
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
             <label style={labelStyle}>
-              Cena końcowa (zł) *
+              Wycena całkowita (zł) *
               <input
                 type="text"
                 inputMode="decimal"
@@ -440,9 +479,9 @@ export default function Orders() {
               <input
                 type="text"
                 inputMode="decimal"
-                value={form.advance_payment}
-                onChange={(e) => updateForm("advance_payment", e.target.value)}
-                placeholder="np. 50,00"
+                value={form.deposit}
+                onChange={(e) => updateForm("deposit", e.target.value)}
+                placeholder="np. 100,00"
                 style={inputStyle}
               />
             </label>
@@ -451,16 +490,27 @@ export default function Orders() {
               Status zamówienia
               <select
                 value={form.status}
-                onChange={(e) => updateForm("status", e.target.value)}
+                onChange={(e) => updateForm("status", e.target.value as any)}
                 style={inputStyle}
               >
-                <option value="nowe">Nowe</option>
-                <option value="w_trakcie">W realizacji</option>
-                <option value="zrealizowane">Zrealizowane</option>
+                <option value="nowe">Nowe (Oczekujące)</option>
+                <option value="w_trakcie">W trakcie realizacji</option>
+                <option value="zrealizowane">Zrealizowane / Wydane</option>
                 <option value="anulowane">Anulowane</option>
               </select>
             </label>
           </div>
+
+          <label style={labelStyle}>
+            Szczegóły dekoracji / Uwagi / Alergie
+            <textarea
+              rows={3}
+              value={form.notes}
+              onChange={(e) => updateForm("notes", e.target.value)}
+              placeholder="np. Napis: 30 Lat Ani, żywe kwiaty, bez orzechów, odbiór o godz. 14:00"
+              style={{ ...inputStyle, resize: "vertical" }}
+            />
+          </label>
 
           <button
             type="submit"
@@ -469,16 +519,16 @@ export default function Orders() {
               ...buttonStyle,
               background: "#8a6d4b",
               color: "#ffffff",
-              marginTop: 10,
+              marginTop: 6,
               fontSize: 15,
             }}
           >
-            {saving ? "Zapisywanie..." : editingId ? "Zapisz zmiany w zamówieniu" : "+ Zapisz nowe zamówienie"}
+            {saving ? "Zapisywanie..." : editingId ? "Zapisz zmiany w zamówieniu" : "+ Zapisz zamówienie"}
           </button>
         </form>
       </div>
 
-      {/* LISTA I FILTROWANIE ZAMÓWIEŃ */}
+      {/* LISTA ZAMÓWIEŃ */}
       <div style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
           <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>
@@ -486,25 +536,25 @@ export default function Orders() {
           </h3>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{ ...inputStyle, width: "auto" }}
+            >
+              <option value="all">Wszystkie statusy</option>
+              <option value="nowe">Nowe</option>
+              <option value="w_trakcie">W trakcie</option>
+              <option value="zrealizowane">Zrealizowane</option>
+              <option value="anulowane">Anulowane</option>
+            </select>
+
             <input
               type="text"
-              placeholder="Szukaj po kliencie, torcie..."
+              placeholder="Szukaj klienta, tortu..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ ...inputStyle, width: 220 }}
             />
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{ ...inputStyle, width: 160 }}
-            >
-              <option value="all">Wszystkie statusy</option>
-              <option value="nowe">Nowe</option>
-              <option value="w_trakcie">W realizacji</option>
-              <option value="zrealizowane">Zrealizowane</option>
-              <option value="anulowane">Anulowane</option>
-            </select>
           </div>
         </div>
 
@@ -516,13 +566,12 @@ export default function Orders() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {filteredOrders.map((ord) => {
-              const badge = getStatusBadge(ord.status);
-              const remaining = Number(ord.total_price) - Number(ord.advance_payment);
+            {filteredOrders.map((order) => {
+              const remaining = Number(order.total_price || 0) - Number(order.deposit || 0);
 
               return (
                 <div
-                  key={ord.id}
+                  key={order.id}
                   style={{
                     border: "1px solid #eee7e0",
                     borderRadius: 14,
@@ -535,83 +584,88 @@ export default function Orders() {
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
                     <div>
-                      <span
-                        style={{
-                          background: badge.bg,
-                          color: badge.color,
-                          fontSize: 10,
-                          fontWeight: 700,
-                          padding: "3px 8px",
-                          borderRadius: 6,
-                          letterSpacing: 1,
-                        }}
-                      >
-                        {badge.label}
-                      </span>
-                      <h4 style={{ margin: "6px 0 2px", fontSize: 18, color: "#292522" }}>
-                        {ord.cake_name}
+                      <div style={{ fontSize: 11, color: "#8a6d4b", fontWeight: 700 }}>
+                        TERMIN WYDANIA: {order.delivery_date}
+                      </div>
+                      <h4 style={{ margin: "3px 0 0", fontSize: 18, color: "#292522" }}>
+                        {order.cake_name} ({order.diameter_cm} cm × {order.height_cm} cm, {order.portions} porcji)
                       </h4>
-                      <div style={{ color: "#716b65", fontSize: 13 }}>
-                        Klient: <strong>{ord.client_name}</strong> {ord.client_phone && `(${ord.client_phone})`}
+                      <div style={{ marginTop: 4, fontSize: 13, color: "#514b46" }}>
+                        Klient: <strong>{order.client_name}</strong> {order.client_phone ? `| 📞 ${order.client_phone}` : ""} {order.client_address ? `| 📍 ${order.client_address}` : ""}
                       </div>
                     </div>
 
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 12, color: "#8a837d" }}>Termin odbioru:</div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: "#8a6d4b" }}>
-                        {ord.delivery_date} {ord.delivery_time && `• ${ord.delivery_time}`}
+                      <div style={{ fontSize: 18, fontWeight: 800, color: "#292522" }}>
+                        {formatMoney(order.total_price)}
+                      </div>
+                      <div style={{ fontSize: 12, color: remaining > 0 ? "#b91c1c" : "#047857", fontWeight: 600 }}>
+                        {remaining > 0 ? `Do zapłaty: ${formatMoney(remaining)}` : "Opłacono w całości"}
                       </div>
                     </div>
                   </div>
 
-                  {ord.description && (
-                    <div style={{ background: "#ffffff", padding: 10, borderRadius: 8, fontSize: 13, color: "#514b46", border: "1px solid #eee7e0" }}>
-                      {ord.description}
+                  {order.notes && (
+                    <div style={{ background: "#ffffff", padding: "10px 14px", borderRadius: 9, fontSize: 13, color: "#514b46", border: "1px solid #eee7e0" }}>
+                      <strong>Uwagi:</strong> {order.notes}
                     </div>
                   )}
 
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #eee7e0", paddingTop: 12, flexWrap: "wrap", gap: 10 }}>
-                    <div style={{ display: "flex", gap: 18, fontSize: 13 }}>
-                      <div>
-                        Wymiary: <strong>{ord.diameter_cm ?? "—"} cm × {ord.height_cm ?? "—"} cm</strong>
-                      </div>
-                      <div>
-                        Porcje: <strong>{ord.portions ?? "—"}</strong>
-                      </div>
-                      <div>
-                        Cena: <strong style={{ color: "#047857" }}>{formatMoney(ord.total_price)}</strong>
-                      </div>
-                      <div>
-                        Zaliczka: <strong>{formatMoney(ord.advance_payment)}</strong>
-                      </div>
-                      <div>
-                        Do zapłaty: <strong style={{ color: remaining > 0 ? "#b91c1c" : "#047857" }}>{formatMoney(remaining)}</strong>
-                      </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: "#716b65" }}>Zmień status:</span>
+                      <button
+                        type="button"
+                        onClick={() => updateOrderStatus(order.id, "nowe")}
+                        style={{
+                          ...buttonStyle,
+                          padding: "4px 8px",
+                          fontSize: 11,
+                          background: order.status === "nowe" ? "#dbeafe" : "#f3f4f6",
+                          color: order.status === "nowe" ? "#1e40af" : "#4b5563",
+                        }}
+                      >
+                        Nowe
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateOrderStatus(order.id, "w_trakcie")}
+                        style={{
+                          ...buttonStyle,
+                          padding: "4px 8px",
+                          fontSize: 11,
+                          background: order.status === "w_trakcie" ? "#fef3c7" : "#f3f4f6",
+                          color: order.status === "w_trakcie" ? "#92400e" : "#4b5563",
+                        }}
+                      >
+                        W trakcie
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateOrderStatus(order.id, "zrealizowane")}
+                        style={{
+                          ...buttonStyle,
+                          padding: "4px 8px",
+                          fontSize: 11,
+                          background: order.status === "zrealizowane" ? "#dcfce7" : "#f3f4f6",
+                          color: order.status === "zrealizowane" ? "#166534" : "#4b5563",
+                        }}
+                      >
+                        Zrealizowane
+                      </button>
                     </div>
 
                     <div style={{ display: "flex", gap: 8 }}>
-                      <select
-                        value={ord.status}
-                        onChange={(e) => updateStatus(ord.id, e.target.value as any)}
-                        style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 12 }}
-                      >
-                        <option value="nowe">Nowe</option>
-                        <option value="w_trakcie">W realizacji</option>
-                        <option value="zrealizowane">Zrealizowane</option>
-                        <option value="anulowane">Anulowane</option>
-                      </select>
-
                       <button
                         type="button"
-                        onClick={() => startEditing(ord)}
+                        onClick={() => startEditing(order)}
                         style={{ ...buttonStyle, background: "#f3f4f6", color: "#374151", padding: "6px 12px", fontSize: 12 }}
                       >
                         Edytuj
                       </button>
-
                       <button
                         type="button"
-                        onClick={() => deleteOrder(ord.id)}
+                        onClick={() => deleteOrder(order.id, order.client_name)}
                         style={{ ...buttonStyle, background: "#fee2e2", color: "#b91c1c", padding: "6px 12px", fontSize: 12 }}
                       >
                         Usuń
