@@ -164,6 +164,9 @@ export default function CakeCalculator() {
   const [height, setHeight] = useState("");
   const [portions, setPortions] = useState("");
 
+  // Śledzimy, które pole użytkownik zmienił jako ostatnie ('dimensions' lub 'portions')
+  const [lastChangedSource, setLastChangedSource] = useState<"dimensions" | "portions">("dimensions");
+
   // Koszty wyceny
   const [laborCost, setLaborCost] = useState("20");
   const [packagingCost, setPackagingCost] = useState("15");
@@ -216,6 +219,7 @@ export default function CakeCalculator() {
   function handleRecipeChange(recipeId: string) {
     setSelectedRecipeId(recipeId);
     setError("");
+    setLastChangedSource("dimensions");
 
     const recipe = recipes.find((item) => item.id === recipeId);
     if (!recipe) {
@@ -238,6 +242,7 @@ export default function CakeCalculator() {
   const currentHeight = height.trim() === "" ? baseHeight : parseDecimal(height);
   const currentPortions = portions.trim() === "" ? basePortions : parseDecimal(portions);
 
+  // Skala na podstawie wymiarów (objętość walca)
   const dimensionScale = useMemo(() => {
     if (
       !baseDiameter ||
@@ -255,6 +260,7 @@ export default function CakeCalculator() {
     return (currentDiameter * currentDiameter * currentHeight) / (baseDiameter * baseDiameter * baseHeight);
   }, [baseDiameter, baseHeight, currentDiameter, currentHeight]);
 
+  // Skala na podstawie liczby porcji
   const portionScale = useMemo(() => {
     if (!basePortions || !currentPortions || basePortions <= 0 || currentPortions <= 0) {
       return 1;
@@ -262,18 +268,13 @@ export default function CakeCalculator() {
     return currentPortions / basePortions;
   }, [basePortions, currentPortions]);
 
+  // Skala końcowa – reaguje na to, co zmieniono jako ostatnie
   const finalScale = useMemo(() => {
-    const dimensionsChanged = Math.abs(dimensionScale - 1) > 0.000001;
-    const portionsChanged = portions.trim() !== "" && Math.abs(portionScale - 1) > 0.000001;
-
-    if (dimensionsChanged && currentDiameter && currentHeight) {
-      return dimensionScale;
+    if (lastChangedSource === "portions") {
+      return portionScale > 0 ? portionScale : 1;
     }
-    if (portionsChanged) {
-      return portionScale;
-    }
-    return 1;
-  }, [dimensionScale, portionScale, portions, currentDiameter, currentHeight]);
+    return dimensionScale > 0 ? dimensionScale : 1;
+  }, [lastChangedSource, portionScale, dimensionScale]);
 
   const calculatedIngredients = useMemo<IngredientCalculation[]>(() => {
     return recipeIngredients.map((ingredient) => {
@@ -317,14 +318,14 @@ export default function CakeCalculator() {
   }, [totalCakeCost, parsedMarginPercent]);
 
   const calculatedPortions = useMemo(() => {
-    if (currentPortions !== null && currentPortions > 0) {
+    if (lastChangedSource === "portions" && currentPortions && currentPortions > 0) {
       return currentPortions;
     }
-    if (basePortions !== null && basePortions > 0) {
-      return basePortions * finalScale;
+    if (basePortions && basePortions > 0) {
+      return Number((basePortions * finalScale).toFixed(1));
     }
-    return 0;
-  }, [currentPortions, basePortions, finalScale]);
+    return currentPortions || 0;
+  }, [lastChangedSource, currentPortions, basePortions, finalScale]);
 
   const costPerPortion = calculatedPortions > 0 ? totalCakeCost / calculatedPortions : 0;
   const pricePerPortion = calculatedPortions > 0 ? finalCakePrice / calculatedPortions : 0;
@@ -418,7 +419,10 @@ export default function CakeCalculator() {
                       type="text"
                       inputMode="decimal"
                       value={diameter}
-                      onChange={(event) => setDiameter(event.target.value)}
+                      onChange={(event) => {
+                        setDiameter(event.target.value);
+                        setLastChangedSource("dimensions");
+                      }}
                       placeholder="np. 21"
                       style={unitInputStyle}
                     />
@@ -433,7 +437,10 @@ export default function CakeCalculator() {
                       type="text"
                       inputMode="decimal"
                       value={height}
-                      onChange={(event) => setHeight(event.target.value)}
+                      onChange={(event) => {
+                        setHeight(event.target.value);
+                        setLastChangedSource("dimensions");
+                      }}
                       placeholder="np. 10"
                       style={unitInputStyle}
                     />
@@ -447,7 +454,10 @@ export default function CakeCalculator() {
                     type="text"
                     inputMode="decimal"
                     value={portions}
-                    onChange={(event) => setPortions(event.target.value)}
+                    onChange={(event) => {
+                      setPortions(event.target.value);
+                      setLastChangedSource("portions");
+                    }}
                     placeholder="np. 12"
                     style={inputStyle}
                   />
@@ -469,7 +479,10 @@ export default function CakeCalculator() {
               {scaleChanged && (
                 <div style={scaleInfoStyle}>
                   <strong>Skala receptury: {finalScale.toFixed(3).replace(".", ",")}×</strong>
-                  <span>Ilości składników zostały automatycznie przeliczone dla wybranego rozmiaru tortu.</span>
+                  <span>
+                    Ilości składników oraz koszty zostały przeliczone według{" "}
+                    {lastChangedSource === "portions" ? "liczby porcji" : "wymiarów tortu"}.
+                  </span>
                 </div>
               )}
 
