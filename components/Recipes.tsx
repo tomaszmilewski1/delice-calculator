@@ -578,6 +578,10 @@ export default function Recipes() {
     );
   }
 
+  function handlePrintRecipe() {
+    window.print();
+  }
+
   async function startEditing(
     recipe: Recipe
   ) {
@@ -1075,7 +1079,35 @@ export default function Recipes() {
         padding: 20,
       }}
     >
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #recipe-preview-modal,
+          #recipe-preview-modal * {
+            visibility: visible !important;
+          }
+          #recipe-preview-modal {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            background: #fff !important;
+          }
+          .delice-no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
       <div
+        className="delice-no-print"
         style={{
           marginBottom: 24,
         }}
@@ -1105,6 +1137,7 @@ export default function Recipes() {
 
       {error && (
         <div
+          className="delice-no-print"
           style={{
             marginBottom: 16,
             padding: 14,
@@ -1121,6 +1154,7 @@ export default function Recipes() {
 
       {success && (
         <div
+          className="delice-no-print"
           style={{
             marginBottom: 16,
             padding: 14,
@@ -1136,6 +1170,7 @@ export default function Recipes() {
       )}
 
       <div
+        className="delice-no-print"
         style={{
           ...cardStyle,
           marginBottom: 24,
@@ -1840,7 +1875,10 @@ export default function Recipes() {
         </form>
       </div>
 
-      <div style={cardStyle}>
+      <div
+        className="delice-no-print"
+        style={cardStyle}
+      >
         <div
           style={{
             display: "flex",
@@ -2230,6 +2268,7 @@ export default function Recipes() {
           }
         >
           <div
+            id="recipe-preview-modal"
             style={{
               width: "100%",
               maxWidth: 700,
@@ -2278,6 +2317,7 @@ export default function Recipes() {
 
               <button
                 type="button"
+                className="delice-no-print"
                 onClick={() =>
                   setPreviewRecipe(null)
                 }
@@ -2682,6 +2722,22 @@ export default function Recipes() {
                   )}
                 </strong>
               </div>
+
+              <button
+                type="button"
+                className="delice-no-print"
+                onClick={handlePrintRecipe}
+                style={{
+                  ...buttonStyle,
+                  marginTop: 14,
+                  width: "100%",
+                  background: "#2563eb",
+                  color: "#fff",
+                  fontSize: 16,
+                }}
+              >
+                Drukuj recepturę
+              </button>
             </div>
           </div>
         </div>
