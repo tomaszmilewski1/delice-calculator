@@ -255,6 +255,11 @@ export default function CakeCalculator() {
   const [height, setHeight] = useState("");
   const [portions, setPortions] = useState("");
 
+  // Dodatkowe koszty wyceny
+  const [laborCost, setLaborCost] = useState("20,00");
+  const [packagingCost, setPackagingCost] = useState("15,00");
+  const [marginPercent, setMarginPercent] = useState("35");
+
   useEffect(() => {
     loadData();
   }, []);
@@ -429,17 +434,6 @@ export default function CakeCalculator() {
           portions.replace(",", ".")
         );
 
-  /*
-   * SKALA WYMIARÓW
-   *
-   * Objętość walca:
-   *
-   * średnica² × wysokość
-   *
-   * Dzięki temu zmiana średnicy ma
-   * większy wpływ na ilość składników.
-   */
-
   const dimensionScale = useMemo(() => {
     if (
       !baseDiameter ||
@@ -473,19 +467,6 @@ export default function CakeCalculator() {
     currentHeight,
   ]);
 
-  /*
-   * SKALA PORCJI
-   *
-   * Jeżeli użytkownik zmienia tylko liczbę
-   * porcji, receptura również zostaje
-   * odpowiednio przeliczona.
-   *
-   * Jeżeli zmienia zarówno wymiary,
-   * jak i porcje, bierzemy większą z
-   * dwóch informacji jako docelowy
-   * współczynnik receptury.
-   */
-
   const portionScale = useMemo(() => {
     if (
       !basePortions ||
@@ -500,20 +481,6 @@ export default function CakeCalculator() {
 
     return currentPortions / basePortions;
   }, [basePortions, currentPortions]);
-
-  /*
-   * Główna skala składników.
-   *
-   * Gdy użytkownik zmieni wymiary tortu,
-   * korzystamy ze skali objętości.
-   *
-   * Gdy użytkownik zmieni porcje ręcznie,
-   * wykorzystujemy skalę porcji.
-   *
-   * Jeżeli zmienione są oba parametry,
-   * wymiary mają pierwszeństwo, ponieważ
-   * opisują rzeczywistą wielkość tortu.
-   */
 
   const finalScale = useMemo(() => {
     const dimensionsChanged =
@@ -588,12 +555,35 @@ export default function CakeCalculator() {
       finalScale,
     ]);
 
-  const totalCost = useMemo(() => {
+  const totalIngredientsCost = useMemo(() => {
     return calculatedIngredients.reduce(
       (sum, item) => sum + item.cost,
       0
     );
   }, [calculatedIngredients]);
+
+  const parsedLaborCost = useMemo(() => {
+    const num = Number(laborCost.replace(",", ".").trim());
+    return Number.isFinite(num) && num >= 0 ? num : 0;
+  }, [laborCost]);
+
+  const parsedPackagingCost = useMemo(() => {
+    const num = Number(packagingCost.replace(",", ".").trim());
+    return Number.isFinite(num) && num >= 0 ? num : 0;
+  }, [packagingCost]);
+
+  const parsedMarginPercent = useMemo(() => {
+    const num = Number(marginPercent.replace(",", ".").trim());
+    return Number.isFinite(num) && num >= 0 ? num : 0;
+  }, [marginPercent]);
+
+  const totalCakeCost = useMemo(() => {
+    return totalIngredientsCost + parsedLaborCost + parsedPackagingCost;
+  }, [totalIngredientsCost, parsedLaborCost, parsedPackagingCost]);
+
+  const finalCakePrice = useMemo(() => {
+    return totalCakeCost * (1 + parsedMarginPercent / 100);
+  }, [totalCakeCost, parsedMarginPercent]);
 
   const calculatedPortions = useMemo(() => {
     if (
@@ -621,27 +611,52 @@ export default function CakeCalculator() {
 
   const costPerPortion =
     calculatedPortions > 0
-      ? totalCost / calculatedPortions
+      ? totalCakeCost / calculatedPortions
       : 0;
 
-  const hasValidDimensions =
-    !!selectedRecipe &&
-    !!baseDiameter &&
-    !!baseHeight &&
-    !!currentDiameter &&
-    !!currentHeight &&
-    Number.isFinite(currentDiameter) &&
-    Number.isFinite(currentHeight) &&
-    currentDiameter > 0 &&
-    currentHeight > 0;
+  const pricePerPortion =
+    calculatedPortions > 0
+      ? finalCakePrice / calculatedPortions
+      : 0;
 
   const scaleChanged =
     Math.abs(finalScale - 1) >
     0.0001;
 
+  function handlePrint() {
+    window.print();
+  }
+
   return (
     <section style={pageStyle}>
-      <div style={headerStyle}>
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #cake-calculator-print,
+          #cake-calculator-print * {
+            visibility: visible !important;
+          }
+          #cake-calculator-print {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            background: #fff !important;
+          }
+          .delice-no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      <div className="delice-no-print" style={headerStyle}>
         <div>
           <div style={eyebrowStyle}>
             KALKULATOR TORTU
@@ -654,18 +669,18 @@ export default function CakeCalculator() {
           <p style={subtitleStyle}>
             Wybierz recepturę, podaj rozmiar
             tortu i otrzymaj automatyczne
-            wyliczenie kosztu.
+            wyliczenie kosztu oraz ceny sprzedaży.
           </p>
         </div>
       </div>
 
       {error && (
-        <div style={errorStyle}>
+        <div className="delice-no-print" style={errorStyle}>
           {error}
         </div>
       )}
 
-      <div style={mainGridStyle}>
+      <div id="cake-calculator-print" style={mainGridStyle}>
         <div style={parametersCardStyle}>
           <div style={cardHeaderStyle}>
             <div>
@@ -867,6 +882,45 @@ export default function CakeCalculator() {
                   </span>
                 </div>
               )}
+
+              {/* DODATKOWE KOSZTY */}
+              <div style={{ marginTop: 20, borderTop: "1px solid #eee7e0", paddingTop: 16 }}>
+                <h4 style={{ margin: "0 0 12px", fontSize: 14, color: "#292522" }}>Koszty wyceny</h4>
+                <div style={threeColumnStyle}>
+                  <label style={labelStyle}>
+                    <span style={labelTextStyle}>Robocizna (zł)</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={laborCost}
+                      onChange={(e) => setLaborCost(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label style={labelStyle}>
+                    <span style={labelTextStyle}>Opakowanie (zł)</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={packagingCost}
+                      onChange={(e) => setPackagingCost(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <label style={labelStyle}>
+                    <span style={labelTextStyle}>Marża (%)</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={marginPercent}
+                      onChange={(e) => setMarginPercent(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -875,19 +929,17 @@ export default function CakeCalculator() {
           <div style={cardHeaderStyle}>
             <div>
               <h3 style={cardTitleStyle}>
-                Koszt tortu
+                Kalkulacja tortu
               </h3>
 
               <p style={cardSubtitleStyle}>
-                Automatycznie przeliczony na
-                podstawie receptury i cen
-                produktów.
+                Automatycznie przeliczony koszt i sugerowana cena sprzedaży.
               </p>
             </div>
 
             {selectedRecipe && (
               <div style={totalBadgeStyle}>
-                {formatMoney(totalCost)}
+                {formatMoney(finalCakePrice)}
               </div>
             )}
           </div>
@@ -1079,7 +1131,39 @@ export default function CakeCalculator() {
 
                   <strong>
                     {formatMoney(
-                      totalCost
+                      totalIngredientsCost
+                    )}
+                  </strong>
+                </div>
+
+                <div
+                  style={
+                    summaryRowStyle
+                  }
+                >
+                  <span>
+                    Koszt robocizny i opakowania
+                  </span>
+
+                  <strong>
+                    {formatMoney(
+                      parsedLaborCost + parsedPackagingCost
+                    )}
+                  </strong>
+                </div>
+
+                <div
+                  style={
+                    summaryRowStyle
+                  }
+                >
+                  <span>
+                    Całkowity koszt
+                  </span>
+
+                  <strong>
+                    {formatMoney(
+                      totalCakeCost
                     )}
                   </strong>
                 </div>
@@ -1102,7 +1186,7 @@ export default function CakeCalculator() {
 
                 <div
                   style={
-                    finalSummaryRowStyle
+                    summaryRowStyle
                   }
                 >
                   <span>
@@ -1115,6 +1199,49 @@ export default function CakeCalculator() {
                     )}
                   </strong>
                 </div>
+
+                <div
+                  style={{
+                    ...finalSummaryRowStyle,
+                    background: "#ecfdf5",
+                    padding: "12px 14px",
+                    borderRadius: "10px",
+                    color: "#065f46",
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: 16 }}>Cena dla klienta</strong>
+                    <div style={{ fontSize: 11, color: "#059669" }}>
+                      ({formatMoney(pricePerPortion)} / porcję)
+                    </div>
+                  </div>
+
+                  <strong style={{ fontSize: 22, color: "#047857" }}>
+                    {formatMoney(
+                      finalCakePrice
+                    )}
+                  </strong>
+                </div>
+
+                <button
+                  type="button"
+                  className="delice-no-print"
+                  onClick={handlePrint}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    borderRadius: "10px",
+                    padding: "12px 16px",
+                    background: "#2563eb",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    marginTop: "16px",
+                    fontSize: "14px",
+                  }}
+                >
+                  Drukuj kalkulację tortu
+                </button>
               </div>
             </>
           )}
@@ -1122,7 +1249,7 @@ export default function CakeCalculator() {
       </div>
 
       {selectedRecipe && (
-        <div style={explanationCardStyle}>
+        <div className="delice-no-print" style={explanationCardStyle}>
           <h3
             style={
               explanationTitleStyle
