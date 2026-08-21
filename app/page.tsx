@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import Recipes from "../components/Recipes";
 import Products from "../components/Products";
 import CakeCalculator from "../components/CakeCalculator";
+import Orders from "../components/Orders";
 
 type ActivePanel =
   | "dashboard"
@@ -107,12 +108,7 @@ export default function Home() {
         return <CakeCalculator />;
 
       case "orders":
-        return (
-          <ComingSoon
-            title="Zamówienia"
-            description="Moduł zamówień będzie służył do zapisywania i zarządzania zamówieniami klientów."
-          />
-        );
+        return <Orders />;
 
       case "clients":
         return (
