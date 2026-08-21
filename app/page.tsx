@@ -8,6 +8,7 @@ import CakeCalculator from "../components/CakeCalculator";
 import Orders from "../components/Orders";
 import Clients from "../components/Clients";
 import Costs from "../components/Costs";
+import Gallery from "../components/Gallery";
 
 type ActivePanel =
   | "dashboard"
@@ -16,7 +17,8 @@ type ActivePanel =
   | "recipes"
   | "orders"
   | "clients"
-  | "costs";
+  | "costs"
+  | "gallery";
 
 export default function Home() {
   const [session, setSession] = useState<any>(null);
@@ -110,6 +112,8 @@ export default function Home() {
         return <Clients />;
       case "costs":
         return <Costs />;
+      case "gallery":
+        return <Gallery />;
       case "dashboard":
       default:
         return (
@@ -341,6 +345,13 @@ export default function Home() {
               onClick={() => handleNavigate("costs")}
               icon="Z"
               label="Koszty"
+            />
+
+            <NavButton
+              active={activePanel === "gallery"}
+              onClick={() => handleNavigate("gallery")}
+              icon="📷"
+              label="Baza zdjęć"
             />
           </nav>
 
@@ -698,6 +709,8 @@ function getPanelTitle(panel: ActivePanel) {
       return "Klienci";
     case "costs":
       return "Koszty";
+    case "gallery":
+      return "Baza zdjęć tortów";
     default:
       return "Délice";
   }
