@@ -410,7 +410,9 @@ export default function Recipes() {
           Boolean(category)
       );
 
-    return Array.from(new Set(values)).sort();
+    return Array.from(
+      new Set(values)
+    ).sort();
   }, [recipes]);
 
   const filteredRecipes = useMemo(() => {
@@ -528,16 +530,17 @@ export default function Recipes() {
   }
 
   function calculatePreviewCost() {
-    return previewIngredients.reduce(
-      (sum, ingredient) => {
-        return (
-          sum +
-          calculateIngredientCost(
-            ingredient
-          )
-        );
-      },
-      0
+    return Number(
+      previewIngredients
+        .reduce(
+          (sum, ingredient) =>
+            sum +
+            calculateIngredientCost(
+              ingredient
+            ),
+          0
+        )
+        .toFixed(2)
     );
   }
 
@@ -1452,7 +1455,7 @@ export default function Recipes() {
               }}
             >
               {ingredients.map(
-                (ingredient, index) => {
+                (ingredient) => {
                   const product =
                     getProduct(
                       ingredient.productId
@@ -1487,6 +1490,7 @@ export default function Recipes() {
                         }
                       >
                         Produkt
+
                         <select
                           value={
                             ingredient.productId
@@ -1536,6 +1540,7 @@ export default function Recipes() {
                         }
                       >
                         Ilość
+
                         <input
                           value={
                             ingredient.quantity
@@ -2357,7 +2362,13 @@ export default function Recipes() {
               </div>
             </div>
 
-            <h3>Składniki</h3>
+            <h3
+              style={{
+                marginBottom: 12,
+              }}
+            >
+              Składniki
+            </h3>
 
             <div
               style={{
@@ -2381,24 +2392,55 @@ export default function Recipes() {
                         display: "flex",
                         justifyContent:
                           "space-between",
+                        alignItems:
+                          "center",
                         gap: 12,
                         padding: 12,
-                        borderBottom:
+                        border:
                           "1px solid #e5e7eb",
+                        borderRadius: 10,
+                        background:
+                          "#fafafa",
                       }}
                     >
-                      <span>
-                        {product?.name ??
-                          "Nieznany produkt"}
-                      </span>
+                      <div>
+                        <strong
+                          style={{
+                            display:
+                              "block",
+                          }}
+                        >
+                          {product?.name ??
+                            "Nieznany produkt"}
+                        </strong>
 
-                      <strong>
-                        {
-                          ingredient.quantity
-                        }{" "}
-                        {ingredient.unit ||
-                          product?.unit ||
-                          ""}
+                        <span
+                          style={{
+                            fontSize: 13,
+                            color:
+                              "#6b7280",
+                          }}
+                        >
+                          {
+                            ingredient.quantity
+                          }{" "}
+                          {ingredient.unit ||
+                            product?.unit ||
+                            ""}
+                        </span>
+                      </div>
+
+                      <strong
+                        style={{
+                          color:
+                            "#047857",
+                        }}
+                      >
+                        {formatMoney(
+                          calculateIngredientCost(
+                            ingredient
+                          )
+                        )}
                       </strong>
                     </div>
                   );
@@ -2407,277 +2449,274 @@ export default function Recipes() {
             </div>
 
             <div
-  style={{
-    marginTop: 20,
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 10,
-  }}
->
-  <div
-    style={{
-      padding: 14,
-      borderRadius: 12,
-      background: "#eff6ff",
-    }}
-  >
-    <div
-      style={{
-        color: "#6b7280",
-        fontSize: 12,
-      }}
-    >
-      Koszt składników
-    </div>
-
-    <strong
-      style={{
-        display: "block",
-        marginTop: 4,
-        fontSize: 20,
-      }}
-    >
-      {formatMoney(
-        calculatePreviewCost()
-      )}
-    </strong>
-  </div>
-
-  <div
-    style={{
-      padding: 14,
-      borderRadius: 12,
-      background: "#fefce8",
-    }}
-  >
-    <div
-      style={{
-        color: "#6b7280",
-        fontSize: 12,
-      }}
-    >
-      Koszt pracy
-    </div>
-
-    <strong
-      style={{
-        display: "block",
-        marginTop: 4,
-        fontSize: 20,
-      }}
-    >
-      {formatMoney(
-        previewRecipe.labor_cost
-      )}
-    </strong>
-  </div>
-
-  <div
-    style={{
-      padding: 14,
-      borderRadius: 12,
-      background: "#fff7ed",
-    }}
-  >
-    <div
-      style={{
-        color: "#6b7280",
-        fontSize: 12,
-      }}
-    >
-      Koszt energii
-    </div>
-
-    <strong
-      style={{
-        display: "block",
-        marginTop: 4,
-        fontSize: 20,
-      }}
-    >
-      {formatMoney(
-        previewRecipe.energy_cost
-      )}
-    </strong>
-  </div>
-
-  <div
-    style={{
-      padding: 14,
-      borderRadius: 12,
-      background: "#fdf2f8",
-    }}
-  >
-    <div
-      style={{
-        color: "#6b7280",
-        fontSize: 12,
-      }}
-    >
-      Koszt opakowania
-    </div>
-
-    <strong
-      style={{
-        display: "block",
-        marginTop: 4,
-        fontSize: 20,
-      }}
-    >
-      {formatMoney(
-        previewRecipe.packaging_cost
-      )}
-    </strong>
-  </div>
-
-  <div
-    style={{
-      padding: 14,
-      borderRadius: 12,
-      background: "#f3f4f6",
-    }}
-  >
-    <div
-      style={{
-        color: "#6b7280",
-        fontSize: 12,
-      }}
-    >
-      Koszty dodatkowe
-    </div>
-
-    <strong
-      style={{
-        display: "block",
-        marginTop: 4,
-        fontSize: 20,
-      }}
-    >
-      {formatMoney(
-        Number(previewRecipe.labor_cost ?? 0) +
-          Number(previewRecipe.energy_cost ?? 0) +
-          Number(previewRecipe.packaging_cost ?? 0)
-      )}
-    </strong>
-  </div>
-
-  <div
-    style={{
-      padding: 14,
-      borderRadius: 12,
-      background: "#f3e8ff",
-    }}
-  >
-    <div
-      style={{
-        color: "#6b7280",
-        fontSize: 12,
-      }}
-    >
-      Całkowity koszt
-    </div>
-
-    <strong
-      style={{
-        display: "block",
-        marginTop: 4,
-        fontSize: 20,
-      }}
-    >
-      {formatMoney(
-        previewRecipe.cost
-      )}
-    </strong>
-  </div>
-
-  <div
-    style={{
-      padding: 14,
-      borderRadius: 12,
-      background: "#ecfdf5",
-    }}
-  >
-    <div
-      style={{
-        color: "#6b7280",
-        fontSize: 12,
-      }}
-    >
-      Marża
-    </div>
-
-    <strong
-      style={{
-        display: "block",
-        marginTop: 4,
-        fontSize: 20,
-        color: "#047857",
-      }}
-    >
-      {Number(
-        previewRecipe.margin_percent ?? 0
-      ).toFixed(2).replace(".", ",")}%
-    </strong>
-  </div>
-
-  <div
-    style={{
-      padding: 14,
-      borderRadius: 12,
-      background: "#dcfce7",
-      border: "1px solid #86efac",
-    }}
-  >
-    <div
-      style={{
-        color: "#166534",
-        fontSize: 12,
-        fontWeight: 600,
-      }}
-    >
-      Cena sprzedaży
-    </div>
-
-    <strong
-      style={{
-        display: "block",
-        marginTop: 4,
-        fontSize: 24,
-        color: "#047857",
-      }}
-    >
-      {formatMoney(
-        Number(previewRecipe.cost ?? 0) *
-          (1 +
-            Number(
-              previewRecipe.margin_percent ?? 0
-            ) / 100)
-      )}
-    </strong>
-  </div>
-</div>
+              style={{
+                marginTop: 20,
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 10,
+              }}
+            >
               <div
                 style={{
-                  color: "#6b7280",
-                  fontSize: 13,
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#eff6ff",
                 }}
               >
-                Koszt składników
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 12,
+                  }}
+                >
+                  Koszt składników
+                </div>
+
+                <strong
+                  style={{
+                    display: "block",
+                    marginTop: 4,
+                    fontSize: 20,
+                  }}
+                >
+                  {formatMoney(
+                    calculatePreviewCost()
+                  )}
+                </strong>
               </div>
 
-              <strong
+              <div
                 style={{
-                  display: "block",
-                  marginTop: 4,
-                  fontSize: 22,
-                  color: "#047857",
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#fefce8",
                 }}
               >
-                {formatMoney(
-                  calculatePreviewCost()
-                )}
-              </strong>
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 12,
+                  }}
+                >
+                  Koszt pracy
+                </div>
+
+                <strong
+                  style={{
+                    display: "block",
+                    marginTop: 4,
+                    fontSize: 20,
+                  }}
+                >
+                  {formatMoney(
+                    previewRecipe.labor_cost
+                  )}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#fff7ed",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 12,
+                  }}
+                >
+                  Koszt energii
+                </div>
+
+                <strong
+                  style={{
+                    display: "block",
+                    marginTop: 4,
+                    fontSize: 20,
+                  }}
+                >
+                  {formatMoney(
+                    previewRecipe.energy_cost
+                  )}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#fdf2f8",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 12,
+                  }}
+                >
+                  Koszt opakowania
+                </div>
+
+                <strong
+                  style={{
+                    display: "block",
+                    marginTop: 4,
+                    fontSize: 20,
+                  }}
+                >
+                  {formatMoney(
+                    previewRecipe.packaging_cost
+                  )}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#f3f4f6",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 12,
+                  }}
+                >
+                  Koszty dodatkowe
+                </div>
+
+                <strong
+                  style={{
+                    display: "block",
+                    marginTop: 4,
+                    fontSize: 20,
+                  }}
+                >
+                  {formatMoney(
+                    Number(
+                      previewRecipe.labor_cost ??
+                        0
+                    ) +
+                      Number(
+                        previewRecipe.energy_cost ??
+                          0
+                      ) +
+                      Number(
+                        previewRecipe.packaging_cost ??
+                          0
+                      )
+                  )}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#f3e8ff",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 12,
+                  }}
+                >
+                  Całkowity koszt
+                </div>
+
+                <strong
+                  style={{
+                    display: "block",
+                    marginTop: 4,
+                    fontSize: 20,
+                  }}
+                >
+                  {formatMoney(
+                    previewRecipe.cost
+                  )}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#ecfdf5",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 12,
+                  }}
+                >
+                  Marża
+                </div>
+
+                <strong
+                  style={{
+                    display: "block",
+                    marginTop: 4,
+                    fontSize: 20,
+                    color: "#047857",
+                  }}
+                >
+                  {Number(
+                    previewRecipe.margin_percent ??
+                      0
+                  )
+                    .toFixed(2)
+                    .replace(".", ",")}
+                  %
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  background: "#dcfce7",
+                  border:
+                    "1px solid #86efac",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#166534",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Cena sprzedaży
+                </div>
+
+                <strong
+                  style={{
+                    display: "block",
+                    marginTop: 4,
+                    fontSize: 24,
+                    color: "#047857",
+                  }}
+                >
+                  {formatMoney(
+                    Number(
+                      previewRecipe.cost ??
+                        0
+                    ) *
+                      (1 +
+                        Number(
+                          previewRecipe.margin_percent ??
+                            0
+                        ) /
+                          100)
+                  )}
+                </strong>
+              </div>
             </div>
           </div>
         </div>
