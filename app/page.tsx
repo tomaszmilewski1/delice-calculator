@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import Recipes from "../components/Recipes";
 import Products from "../components/Products";
+import CakeCalculator from "../components/CakeCalculator";
 
 type ActivePanel =
   | "dashboard"
@@ -103,12 +104,7 @@ export default function Home() {
         return <Recipes />;
 
       case "new-cake":
-        return (
-          <ComingSoon
-            title="Nowy tort"
-            description="Tutaj powstanie główny kalkulator tortu: wybór średnicy, wysokości, liczby porcji, blatów, kremów, dodatków i automatyczne wyliczenie kosztu."
-          />
-        );
+        return <CakeCalculator />;
 
       case "orders":
         return (
@@ -263,7 +259,7 @@ export default function Home() {
   return (
     <main style={appPageStyle}>
       <div style={appShellStyle}>
-        <aside style={sidebarStyle}>
+        <aside className="delice-no-print" style={sidebarStyle}>
           <div style={brandStyle}>
             <div style={brandLogoStyle}>D</div>
 
@@ -383,7 +379,7 @@ export default function Home() {
         </aside>
 
         <section style={mainContentStyle}>
-          <header style={topbarStyle}>
+          <header className="delice-no-print" style={topbarStyle}>
             <div>
               <div style={topbarEyebrowStyle}>
                 DÉLICE
