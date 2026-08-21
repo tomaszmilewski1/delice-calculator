@@ -410,9 +410,7 @@ export default function Recipes() {
           Boolean(category)
       );
 
-    return Array.from(
-      new Set(values)
-    ).sort();
+    return Array.from(new Set(values)).sort();
   }, [recipes]);
 
   const filteredRecipes = useMemo(() => {
@@ -541,6 +539,42 @@ export default function Recipes() {
           0
         )
         .toFixed(2)
+    );
+  }
+
+  function calculatePreviewAdditionalCosts() {
+    return Number(
+      (
+        Number(previewRecipe?.labor_cost ?? 0) +
+        Number(previewRecipe?.energy_cost ?? 0) +
+        Number(previewRecipe?.packaging_cost ?? 0)
+      ).toFixed(2)
+    );
+  }
+
+  function calculatePreviewTotalCost() {
+    return Number(
+      (
+        calculatePreviewCost() +
+        calculatePreviewAdditionalCosts()
+      ).toFixed(2)
+    );
+  }
+
+  function calculatePreviewSalePrice() {
+    const total =
+      calculatePreviewTotalCost();
+
+    const margin =
+      Number(
+        previewRecipe?.margin_percent ?? 0
+      );
+
+    return Number(
+      (
+        total *
+        (1 + margin / 100)
+      ).toFixed(2)
     );
   }
 
@@ -1490,7 +1524,6 @@ export default function Recipes() {
                         }
                       >
                         Produkt
-
                         <select
                           value={
                             ingredient.productId
@@ -1540,7 +1573,6 @@ export default function Recipes() {
                         }
                       >
                         Ilość
-
                         <input
                           value={
                             ingredient.quantity
@@ -2306,8 +2338,7 @@ export default function Recipes() {
                 </div>
 
                 <strong>
-                  {previewRecipe.portions ??
-                    "—"}
+                  {previewRecipe.portions ?? "—"}
                 </strong>
               </div>
 
@@ -2330,8 +2361,7 @@ export default function Recipes() {
                 </div>
 
                 <strong>
-                  {previewRecipe.diameter_cm ??
-                    "—"}{" "}
+                  {previewRecipe.diameter_cm ?? "—"}{" "}
                   cm
                 </strong>
               </div>
@@ -2355,8 +2385,7 @@ export default function Recipes() {
                 </div>
 
                 <strong>
-                  {previewRecipe.height_cm ??
-                    "—"}{" "}
+                  {previewRecipe.height_cm ?? "—"}{" "}
                   cm
                 </strong>
               </div>
@@ -2385,61 +2414,53 @@ export default function Recipes() {
                       ingredient.productId
                     );
 
+                  const ingredientCost =
+                    calculateIngredientCost(
+                      ingredient
+                    );
+
                   return (
                     <div
                       key={ingredient.id}
                       style={{
-                        display: "flex",
-                        justifyContent:
-                          "space-between",
+                        display: "grid",
+                        gridTemplateColumns:
+                          "1fr auto auto",
                         alignItems:
                           "center",
                         gap: 12,
                         padding: 12,
-                        border:
+                        borderBottom:
                           "1px solid #e5e7eb",
-                        borderRadius: 10,
-                        background:
-                          "#fafafa",
                       }}
                     >
-                      <div>
-                        <strong
-                          style={{
-                            display:
-                              "block",
-                          }}
-                        >
-                          {product?.name ??
-                            "Nieznany produkt"}
-                        </strong>
+                      <strong>
+                        {product?.name ??
+                          "Nieznany produkt"}
+                      </strong>
 
-                        <span
-                          style={{
-                            fontSize: 13,
-                            color:
-                              "#6b7280",
-                          }}
-                        >
-                          {
-                            ingredient.quantity
-                          }{" "}
-                          {ingredient.unit ||
-                            product?.unit ||
-                            ""}
-                        </span>
-                      </div>
+                      <span
+                        style={{
+                          color: "#4b5563",
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
+                        {ingredient.quantity}{" "}
+                        {ingredient.unit ||
+                          product?.unit ||
+                          ""}
+                      </span>
 
                       <strong
                         style={{
-                          color:
-                            "#047857",
+                          color: "#047857",
+                          whiteSpace:
+                            "nowrap",
                         }}
                       >
                         {formatMoney(
-                          calculateIngredientCost(
-                            ingredient
-                          )
+                          ingredientCost
                         )}
                       </strong>
                     </div>
@@ -2451,35 +2472,28 @@ export default function Recipes() {
             <div
               style={{
                 marginTop: 20,
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: 10,
+                display: "flex",
+                flexDirection:
+                  "column",
+                gap: 8,
               }}
             >
               <div
                 style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  background: "#eff6ff",
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  padding: 12,
+                  background:
+                    "#eff6ff",
+                  borderRadius: 10,
                 }}
               >
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: 12,
-                  }}
-                >
+                <span>
                   Koszt składników
-                </div>
+                </span>
 
-                <strong
-                  style={{
-                    display: "block",
-                    marginTop: 4,
-                    fontSize: 20,
-                  }}
-                >
+                <strong>
                   {formatMoney(
                     calculatePreviewCost()
                   )}
@@ -2488,184 +2502,140 @@ export default function Recipes() {
 
               <div
                 style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  background: "#fefce8",
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  padding: 12,
+                  background:
+                    "#f9fafb",
+                  borderRadius: 10,
                 }}
               >
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: 12,
-                  }}
-                >
+                <span>
                   Koszt pracy
-                </div>
+                </span>
 
-                <strong
-                  style={{
-                    display: "block",
-                    marginTop: 4,
-                    fontSize: 20,
-                  }}
-                >
-                  {formatMoney(
-                    previewRecipe.labor_cost
-                  )}
-                </strong>
-              </div>
-
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  background: "#fff7ed",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: 12,
-                  }}
-                >
-                  Koszt energii
-                </div>
-
-                <strong
-                  style={{
-                    display: "block",
-                    marginTop: 4,
-                    fontSize: 20,
-                  }}
-                >
-                  {formatMoney(
-                    previewRecipe.energy_cost
-                  )}
-                </strong>
-              </div>
-
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  background: "#fdf2f8",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: 12,
-                  }}
-                >
-                  Koszt opakowania
-                </div>
-
-                <strong
-                  style={{
-                    display: "block",
-                    marginTop: 4,
-                    fontSize: 20,
-                  }}
-                >
-                  {formatMoney(
-                    previewRecipe.packaging_cost
-                  )}
-                </strong>
-              </div>
-
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  background: "#f3f4f6",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: 12,
-                  }}
-                >
-                  Koszty dodatkowe
-                </div>
-
-                <strong
-                  style={{
-                    display: "block",
-                    marginTop: 4,
-                    fontSize: 20,
-                  }}
-                >
+                <strong>
                   {formatMoney(
                     Number(
                       previewRecipe.labor_cost ??
                         0
-                    ) +
-                      Number(
-                        previewRecipe.energy_cost ??
-                          0
-                      ) +
-                      Number(
-                        previewRecipe.packaging_cost ??
-                          0
-                      )
+                    )
                   )}
                 </strong>
               </div>
 
               <div
                 style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  background: "#f3e8ff",
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  padding: 12,
+                  background:
+                    "#f9fafb",
+                  borderRadius: 10,
                 }}
               >
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: 12,
-                  }}
-                >
-                  Całkowity koszt
-                </div>
+                <span>
+                  Koszt energii
+                </span>
 
-                <strong
-                  style={{
-                    display: "block",
-                    marginTop: 4,
-                    fontSize: 20,
-                  }}
-                >
+                <strong>
                   {formatMoney(
-                    previewRecipe.cost
+                    Number(
+                      previewRecipe.energy_cost ??
+                        0
+                    )
                   )}
                 </strong>
               </div>
 
               <div
                 style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  background: "#ecfdf5",
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  padding: 12,
+                  background:
+                    "#f9fafb",
+                  borderRadius: 10,
                 }}
               >
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: 12,
-                  }}
-                >
-                  Marża
-                </div>
+                <span>
+                  Koszt opakowania
+                </span>
 
-                <strong
-                  style={{
-                    display: "block",
-                    marginTop: 4,
-                    fontSize: 20,
-                    color: "#047857",
-                  }}
-                >
+                <strong>
+                  {formatMoney(
+                    Number(
+                      previewRecipe.packaging_cost ??
+                        0
+                    )
+                  )}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  padding: 12,
+                  background:
+                    "#fefce8",
+                  borderRadius: 10,
+                }}
+              >
+                <strong>
+                  Koszty dodatkowe
+                </strong>
+
+                <strong>
+                  {formatMoney(
+                    calculatePreviewAdditionalCosts()
+                  )}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  padding: 14,
+                  background:
+                    "#f3e8ff",
+                  borderRadius: 10,
+                  fontSize: 17,
+                }}
+              >
+                <strong>
+                  Całkowity koszt
+                </strong>
+
+                <strong>
+                  {formatMoney(
+                    calculatePreviewTotalCost()
+                  )}
+                </strong>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  padding: 12,
+                  background:
+                    "#f9fafb",
+                  borderRadius: 10,
+                }}
+              >
+                <span>
+                  Marża
+                </span>
+
+                <strong>
                   {Number(
                     previewRecipe.margin_percent ??
                       0
@@ -2678,42 +2648,37 @@ export default function Recipes() {
 
               <div
                 style={{
-                  padding: 14,
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  alignItems:
+                    "center",
+                  padding: 18,
+                  marginTop: 4,
+                  background:
+                    "#ecfdf5",
                   borderRadius: 12,
-                  background: "#dcfce7",
                   border:
-                    "1px solid #86efac",
+                    "1px solid #a7f3d0",
                 }}
               >
-                <div
+                <strong
                   style={{
-                    color: "#166534",
-                    fontSize: 12,
-                    fontWeight: 600,
+                    fontSize: 17,
+                    color: "#065f46",
                   }}
                 >
                   Cena sprzedaży
-                </div>
+                </strong>
 
                 <strong
                   style={{
-                    display: "block",
-                    marginTop: 4,
                     fontSize: 24,
                     color: "#047857",
                   }}
                 >
                   {formatMoney(
-                    Number(
-                      previewRecipe.cost ??
-                        0
-                    ) *
-                      (1 +
-                        Number(
-                          previewRecipe.margin_percent ??
-                            0
-                        ) /
-                          100)
+                    calculatePreviewSalePrice()
                   )}
                 </strong>
               </div>
