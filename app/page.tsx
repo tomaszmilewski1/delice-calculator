@@ -21,7 +21,7 @@ type ActivePanel =
   | "gallery";
 
 export default function Home() {
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<{ user?: { email?: string } } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [email, setEmail] = useState("");
@@ -33,7 +33,16 @@ export default function Home() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    checkSession();
+    async function checkSession() {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+
+      setSession(currentSession);
+      setLoading(false);
+    }
+
+    void checkSession();
 
     const {
       data: { subscription },
@@ -46,15 +55,6 @@ export default function Home() {
       subscription.unsubscribe();
     };
   }, []);
-
-  async function checkSession() {
-    const {
-      data: { session: currentSession },
-    } = await supabase.auth.getSession();
-
-    setSession(currentSession);
-    setLoading(false);
-  }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -95,7 +95,9 @@ export default function Home() {
   function handleNavigate(panel: ActivePanel) {
     setActivePanel(panel);
     setIsMobileMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
   function renderPanel() {
@@ -476,66 +478,66 @@ function Dashboard({
   });
 
   useEffect(() => {
+    async function loadStats() {
+      try {
+        const [ordersRes, recipesRes, productsRes, clientsRes] = await Promise.all([
+          supabase.from("orders").select("*"),
+          supabase.from("recipes").select("id", { count: "exact", head: true }),
+          supabase.from("products").select("id", { count: "exact", head: true }),
+          supabase.from("clients").select("id", { count: "exact", head: true }),
+        ]);
+
+        const allOrders = (ordersRes.data || []) as any[];
+
+        const parseVal = (v: any): number => {
+          if (v === null || v === undefined || v === "") return 0;
+          if (typeof v === "number") return v;
+          const num = Number(String(v).replace(",", ".").replace(/[^0-9.-]+/g, "").trim());
+          return Number.isFinite(num) ? num : 0;
+        };
+
+        const active = allOrders.filter((o) => {
+          const s = String(o.status || "").toLowerCase().trim();
+          return s === "nowe" || s === "w_trakcie" || s === "w trakcie" || s === "oczekujace";
+        });
+
+        const activeVal = active.reduce((sum, o) => {
+          const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
+          return sum + price;
+        }, 0);
+
+        const realized = allOrders.filter((o) => {
+          const s = String(o.status || "").toLowerCase().trim();
+          return (
+            s === "zrealizowane" ||
+            s === "zrealizowano" ||
+            s === "zakonczone" ||
+            s === "odebrane" ||
+            s === "oplacone"
+          );
+        });
+
+        const realizedVal = realized.reduce((sum, o) => {
+          const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
+          return sum + price;
+        }, 0);
+
+        setStats({
+          activeOrdersCount: active.length,
+          activeOrdersValue: activeVal,
+          recipesCount: recipesRes.count || 0,
+          productsCount: productsRes.count || 0,
+          clientsCount: clientsRes.count || 0,
+          realizedRevenue: realizedVal,
+          loading: false,
+        });
+      } catch {
+        setStats((prev) => ({ ...prev, loading: false }));
+      }
+    }
+
     void loadStats();
   }, []);
-
-  async function loadStats() {
-    try {
-      const [ordersRes, recipesRes, productsRes, clientsRes] = await Promise.all([
-        supabase.from("orders").select("*"),
-        supabase.from("recipes").select("id", { count: "exact", head: true }),
-        supabase.from("products").select("id", { count: "exact", head: true }),
-        supabase.from("clients").select("id", { count: "exact", head: true }),
-      ]);
-
-      const allOrders = (ordersRes.data || []) as any[];
-
-      const parseVal = (v: any): number => {
-        if (v === null || v === undefined || v === "") return 0;
-        if (typeof v === "number") return v;
-        const num = Number(String(v).replace(",", ".").replace(/[^0-9.-]+/g, "").trim());
-        return Number.isFinite(num) ? num : 0;
-      };
-
-      const active = allOrders.filter((o) => {
-        const s = String(o.status || "").toLowerCase().trim();
-        return s === "nowe" || s === "w_trakcie" || s === "w trakcie" || s === "oczekujace";
-      });
-
-      const activeVal = active.reduce((sum, o) => {
-        const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
-        return sum + price;
-      }, 0);
-
-      const realized = allOrders.filter((o) => {
-        const s = String(o.status || "").toLowerCase().trim();
-        return (
-          s === "zrealizowane" ||
-          s === "zrealizowano" ||
-          s === "zakonczone" ||
-          s === "odebrane" ||
-          s === "oplacone"
-        );
-      });
-
-      const realizedVal = realized.reduce((sum, o) => {
-        const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
-        return sum + price;
-      }, 0);
-
-      setStats({
-        activeOrdersCount: active.length,
-        activeOrdersValue: activeVal,
-        recipesCount: recipesRes.count || 0,
-        productsCount: productsRes.count || 0,
-        clientsCount: clientsRes.count || 0,
-        realizedRevenue: realizedVal,
-        loading: false,
-      });
-    } catch {
-      setStats((prev) => ({ ...prev, loading: false }));
-    }
-  }
 
   function formatMoney(val: number) {
     if (!Number.isFinite(val)) return "0,00 zł";
