@@ -1,1240 +1,484 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-import Recipes from "../components/Recipes";
-import Products from "../components/Products";
-import CakeCalculator from "../components/CakeCalculator";
-import Orders from "../components/Orders";
-import Clients from "../components/Clients";
-import Costs from "../components/Costs";
-import Gallery from "../components/Gallery";
 
-type ActivePanel =
-  | "dashboard"
-  | "new-cake"
-  | "products"
-  | "recipes"
-  | "orders"
-  | "clients"
-  | "costs"
-  | "gallery";
+export interface CakePhoto {
+  id: string;
+  title: string;
+  category: string;
+  image_url: string;
+  description: string | null;
+  flavor_notes: string | null;
+  created_at: string;
+}
 
-export default function Home() {
-  const [session, setSession] = useState<any>(null);
+const CATEGORIES = [
+  "Wszystkie",
+  "Urodzinowe",
+  "Weselne",
+  "Dziecięce",
+  "Chrzciny / Komunia",
+  "Okolicznościowe",
+  "Nowoczesne / Bento",
+  "Inne",
+];
+
+export default function Gallery() {
+  const [photos, setPhotos] = useState<CakePhoto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("Wszystkie");
+  const [search, setSearch] = useState("");
+  const [activeModalPhoto, setActiveModalPhoto] = useState<CakePhoto | null>(null);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState("");
-
-  const [activePanel, setActivePanel] = useState<ActivePanel>("dashboard");
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Pola formularza
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("Urodzinowe");
+  const [imageUrl, setImageUrl] = useState("");
+  const [description, setDescription] = useState("");
+  const [flavorNotes, setFlavorNotes] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    checkSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-      setLoading(false);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
+    void loadPhotos();
   }, []);
 
-  async function checkSession() {
-    const {
-      data: { session: currentSession },
-    } = await supabase.auth.getSession();
+  async function loadPhotos() {
+    setLoading(true);
+    setError("");
+    try {
+      const { data, error: fetchErr } = await supabase
+        .from("cake_gallery")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    setSession(currentSession);
-    setLoading(false);
+      if (fetchErr) throw fetchErr;
+      setPhotos((data || []) as CakePhoto[]);
+    } catch (err: any) {
+      setError(`Błąd wczytywania galerii: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoginError("");
+  function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (!email.trim()) {
-      setLoginError("Podaj adres e-mail.");
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Zdjęcie jest za duże. Maksymalny rozmiar to 5 MB.");
       return;
     }
 
-    if (!password) {
-      setLoginError("Podaj hasło.");
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImageUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (!title.trim()) {
+      setError("Podaj nazwę lub tytuł realizacji.");
+      return;
+    }
+    if (!imageUrl.trim()) {
+      setError("Wybierz plik zdjęcia z dysku lub podaj link URL.");
       return;
     }
 
-    setLoginLoading(true);
+    setSaving(true);
+    try {
+      const { error: insertErr } = await supabase.from("cake_gallery").insert({
+        title: title.trim(),
+        category,
+        image_url: imageUrl.trim(),
+        description: description.trim() || null,
+        flavor_notes: flavorNotes.trim() || null,
+      });
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
+      if (insertErr) throw insertErr;
+
+      setSuccess("Zdjęcie zostało pomyślnie dodane do galerii!");
+      setTitle("");
+      setImageUrl("");
+      setDescription("");
+      setFlavorNotes("");
+      await loadPhotos();
+    } catch (err: any) {
+      setError(`Błąd zapisu: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string, photoTitle: string) {
+    if (!window.confirm(`Czy na pewno chcesz usunąć zdjęcie "${photoTitle}"?`)) return;
+    try {
+      const { error: delErr } = await supabase.from("cake_gallery").delete().eq("id", id);
+      if (delErr) throw delErr;
+      setSuccess(`Usunięto zdjęcie: ${photoTitle}`);
+      if (activeModalPhoto?.id === id) setActiveModalPhoto(null);
+      await loadPhotos();
+    } catch (err: any) {
+      setError(`Błąd usuwania: ${err.message}`);
+    }
+  }
+
+  const filteredPhotos = useMemo(() => {
+    return photos.filter((p) => {
+      const matchesCat = selectedCategory === "Wszystkie" || p.category === selectedCategory;
+      const q = search.trim().toLowerCase();
+      const matchesQuery =
+        !q ||
+        p.title.toLowerCase().includes(q) ||
+        (p.description && p.description.toLowerCase().includes(q)) ||
+        (p.flavor_notes && p.flavor_notes.toLowerCase().includes(q));
+      return matchesCat && matchesQuery;
     });
+  }, [photos, selectedCategory, search]);
 
-    if (error) {
-      setLoginError("Nie udało się zalogować. Sprawdź e-mail i hasło.");
-      setLoginLoading(false);
-      return;
-    }
+  const cardStyle: React.CSSProperties = {
+    background: "#ffffff",
+    border: "1px solid #e9e2da",
+    borderRadius: 18,
+    padding: 24,
+    boxShadow: "0 4px 20px rgba(0,0,0,0.03)",
+  };
 
-    setLoginLoading(false);
-    setActivePanel("dashboard");
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    setActivePanel("dashboard");
-  }
-
-  function handleNavigate(panel: ActivePanel) {
-    setActivePanel(panel);
-    setIsMobileMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function renderPanel() {
-    switch (activePanel) {
-      case "products":
-        return <Products />;
-      case "recipes":
-        return <Recipes />;
-      case "new-cake":
-        return <CakeCalculator />;
-      case "orders":
-        return <Orders />;
-      case "clients":
-        return <Clients />;
-      case "costs":
-        return <Costs />;
-      case "gallery":
-        return <Gallery />;
-      case "dashboard":
-      default:
-        return (
-          <Dashboard
-            onNavigate={handleNavigate}
-            email={session?.user?.email}
-          />
-        );
-    }
-  }
-
-  if (loading) {
-    return (
-      <main style={loadingPageStyle}>
-        <div style={loadingCardStyle}>
-          <div style={loginLogoStyle}>D</div>
-          <strong>Délice</strong>
-          <span>Ładowanie aplikacji...</span>
-        </div>
-      </main>
-    );
-  }
-
-  if (!session) {
-    return (
-      <main style={loginPageStyle}>
-        <div style={loginWrapperStyle}>
-          <div style={loginBrandStyle}>
-            <div style={loginLogoStyle}>D</div>
-            <div>
-              <div style={loginBrandNameStyle}>Délice</div>
-              <div style={loginBrandSubtitleStyle}>Kalkulator tortów</div>
-            </div>
-          </div>
-
-          <div style={loginCardStyle}>
-            <div style={loginHeaderStyle}>
-              <div style={loginEyebrowStyle}>PANEL ADMINISTRACYJNY</div>
-              <h1 style={loginTitleStyle}>Zaloguj się</h1>
-              <p style={loginDescriptionStyle}>
-                Zaloguj się, aby korzystać z kalkulatora tortów, receptur i bazy produktów.
-              </p>
-            </div>
-
-            <form onSubmit={handleLogin}>
-              <label style={loginLabelStyle}>
-                <span style={loginLabelTextStyle}>E-mail</span>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="twoj@email.pl"
-                  autoComplete="email"
-                  disabled={loginLoading}
-                  style={loginInputStyle}
-                />
-              </label>
-
-              <label style={loginLabelStyle}>
-                <span style={loginLabelTextStyle}>Hasło</span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  disabled={loginLoading}
-                  style={loginInputStyle}
-                />
-              </label>
-
-              {loginError && <div style={loginErrorStyle}>{loginError}</div>}
-
-              <button
-                type="submit"
-                disabled={loginLoading}
-                style={{
-                  ...loginButtonStyle,
-                  opacity: loginLoading ? 0.7 : 1,
-                  cursor: loginLoading ? "not-allowed" : "pointer",
-                }}
-              >
-                {loginLoading ? "Logowanie..." : "Zaloguj się"}
-              </button>
-            </form>
-          </div>
-
-          <div style={loginFooterStyle}>Délice by Milewska</div>
-        </div>
-      </main>
-    );
-  }
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "10px 12px",
+    borderRadius: 9,
+    border: "1px solid #ddd3c9",
+    fontSize: 14,
+    background: "#fff",
+    color: "#292522",
+  };
 
   return (
-    <main style={appPageStyle}>
-      <style>{`
-        @media (max-width: 900px) {
-          .delice-sidebar {
-            position: fixed !important;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            z-index: 1000;
-            transform: translateX(-100%);
-            transition: transform 0.3s ease;
-            box-shadow: 0 0 25px rgba(0,0,0,0.15);
-          }
-          .delice-sidebar.mobile-open {
-            transform: translateX(0);
-          }
-          .delice-mobile-toggle {
-            display: flex !important;
-          }
-          .delice-content-container {
-            padding: 16px !important;
-          }
-          .delice-backdrop {
-            display: block !important;
-          }
-        }
-        @media (min-width: 901px) {
-          .delice-sidebar {
-            transform: none !important;
-          }
-          .delice-mobile-toggle {
-            display: none !important;
-          }
-          .delice-backdrop {
-            display: none !important;
-          }
-        }
-      `}</style>
+    <div style={{ maxWidth: 1200, margin: "0 auto", paddingBottom: 60 }}>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ color: "#8a6d4b", fontSize: 11, fontWeight: 700, letterSpacing: 2 }}>
+          PORTFOLIO I REALIZACJE
+        </div>
+        <h2 style={{ margin: "4px 0 0", fontSize: 28, color: "#292522" }}>Baza zdjęć tortów</h2>
+        <p style={{ margin: "6px 0 0", color: "#716b65" }}>
+          Katalog zrealizowanych wypieków, inspiracje dekoracji i smaków dla klientów.
+        </p>
+      </div>
 
-      {isMobileMenuOpen && (
+      {error && (
+        <div style={{ padding: 14, background: "#fee2e2", color: "#b91c1c", borderRadius: 12, marginBottom: 20 }}>
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div style={{ padding: 14, background: "#ecfdf5", color: "#047857", borderRadius: 12, marginBottom: 20 }}>
+          {success}
+        </div>
+      )}
+
+      {/* FORMULARZ */}
+      <div style={{ ...cardStyle, marginBottom: 24 }}>
+        <h3 style={{ margin: "0 0 16px", fontSize: 18, color: "#292522" }}>
+          + Dodaj nowe zdjęcie do portfolio
+        </h3>
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
+              Nazwa / Tytuł tortu *
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="np. Tort Piętrowy z eustomami"
+                required
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
+              Kategoria
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                style={inputStyle}
+              >
+                {CATEGORIES.filter((c) => c !== "Wszystkie").map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
+              📸 Wgraj plik z telefonu / komputera
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                style={{ ...inputStyle, padding: "8px" }}
+              />
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
+              🔗 lub wklej link do zdjęcia
+              <input
+                type="url"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="https://twojadomena.pl/zdjecie.jpg"
+                style={inputStyle}
+              />
+            </label>
+          </div>
+
+          {imageUrl && (
+            <div style={{ display: "flex", alignItems: "center", gap: 14, background: "#fdfbf9", padding: 10, borderRadius: 10, border: "1px solid #eee7e0" }}>
+              <img src={imageUrl} alt="Podgląd" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8 }} />
+              <span style={{ fontSize: 12, color: "#047857", fontWeight: 600 }}>✓ Zdjęcie załadowane</span>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
+              Smaki / Kremy (notatka)
+              <input
+                type="text"
+                value={flavorNotes}
+                onChange={(e) => setFlavorNotes(e.target.value)}
+                placeholder="np. Czekolada, chrupka orzechowa, malina"
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
+              Opis dekoracji / Wymiary
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="np. Średnica 20 cm, tynk ganache, złocenia"
+                style={inputStyle}
+              />
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={saving}
+            style={{
+              border: "none",
+              borderRadius: 10,
+              padding: "12px 18px",
+              background: "#8a6d4b",
+              color: "#ffffff",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: saving ? "not-allowed" : "pointer",
+              marginTop: 6,
+            }}
+          >
+            {saving ? "Zapisywanie..." : "+ Dodaj zdjęcie do bazy"}
+          </button>
+        </form>
+      </div>
+
+      {/* LISTA I PODGLĄD */}
+      <div style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                style={{
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  background: selectedCategory === cat ? "#8a6d4b" : "#f4f0ec",
+                  color: selectedCategory === cat ? "#ffffff" : "#716b65",
+                }}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <input
+            type="text"
+            placeholder="Szukaj realizacji, smaku..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ ...inputStyle, width: 220 }}
+          />
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: "#716b65" }}>Ładowanie bazy zdjęć...</div>
+        ) : filteredPhotos.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 40, border: "1px dashed #ddd3c9", borderRadius: 12, color: "#8a837d" }}>
+            Brak zdjęć w wybranej kategorii. Dodaj pierwsze zdjęcie powyżej!
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 20 }}>
+            {filteredPhotos.map((photo) => (
+              <div
+                key={photo.id}
+                style={{
+                  border: "1px solid #eee7e0",
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  background: "#ffffff",
+                  display: "flex",
+                  flexDirection: "column",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
+                }}
+              >
+                <div
+                  onClick={() => setActiveModalPhoto(photo)}
+                  style={{ width: "100%", height: 220, position: "relative", cursor: "pointer", background: "#f4f0ec" }}
+                >
+                  <img
+                    src={photo.image_url}
+                    alt={photo.title}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 10,
+                      right: 10,
+                      background: "rgba(0,0,0,0.6)",
+                      color: "#fff",
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {photo.category}
+                  </div>
+                </div>
+
+                <div style={{ padding: 14, display: "flex", flexDirection: "column", flex: 1, justifyContent: "space-between" }}>
+                  <div>
+                    <h4 style={{ margin: "0 0 6px", fontSize: 16, color: "#292522" }}>{photo.title}</h4>
+                    {photo.flavor_notes && (
+                      <div style={{ fontSize: 12, color: "#8a6d4b", fontWeight: 600, marginBottom: 4 }}>
+                        🍰 {photo.flavor_notes}
+                      </div>
+                    )}
+                    {photo.description && (
+                      <p style={{ margin: 0, fontSize: 12, color: "#716b65", lineHeight: 1.4 }}>
+                        {photo.description}
+                      </p>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, borderTop: "1px solid #eee7e0", paddingTop: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveModalPhoto(photo)}
+                      style={{ border: "none", background: "transparent", color: "#8a6d4b", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                    >
+                      Powiększ 🔍
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(photo.id, photo.title)}
+                      style={{ border: "none", background: "transparent", color: "#b91c1c", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0 }}
+                    >
+                      Usuń
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* LIGHTBOX */}
+      {activeModalPhoto && (
         <div
-          className="delice-backdrop"
-          onClick={() => setIsMobileMenuOpen(false)}
+          onClick={() => setActiveModalPhoto(null)}
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.4)",
-            zIndex: 999,
+            background: "rgba(0,0,0,0.8)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
           }}
-        />
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#ffffff",
+              borderRadius: 18,
+              maxWidth: 600,
+              width: "100%",
+              overflow: "hidden",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+            }}
+          >
+            <img
+              src={activeModalPhoto.image_url}
+              alt={activeModalPhoto.title}
+              style={{ width: "100%", maxHeight: "65vh", objectFit: "contain", background: "#111" }}
+            />
+            <div style={{ padding: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontSize: 11, color: "#8a6d4b", fontWeight: 700 }}>
+                    {activeModalPhoto.category}
+                  </div>
+                  <h3 style={{ margin: "4px 0 6px", fontSize: 20, color: "#292522" }}>
+                    {activeModalPhoto.title}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveModalPhoto(null)}
+                  style={{ border: "none", background: "#f3f4f6", borderRadius: 8, padding: "6px 10px", fontWeight: 700, cursor: "pointer" }}
+                >
+                  ✕ Zamknij
+                </button>
+              </div>
+
+              {activeModalPhoto.flavor_notes && (
+                <div style={{ fontSize: 13, color: "#8a6d4b", fontWeight: 600, marginTop: 6 }}>
+                  Smaki: {activeModalPhoto.flavor_notes}
+                </div>
+              )}
+              {activeModalPhoto.description && (
+                <p style={{ margin: "8px 0 0", fontSize: 13, color: "#716b65", lineHeight: 1.5 }}>
+                  {activeModalPhoto.description}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
-
-      <div style={appShellStyle}>
-        <aside
-          className={`delice-sidebar ${isMobileMenuOpen ? "mobile-open" : ""}`}
-          style={sidebarStyle}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={brandStyle}>
-              <div style={brandLogoStyle}>D</div>
-              <div>
-                <div style={brandNameStyle}>Délice</div>
-                <div style={brandSubtitleStyle}>Kalkulator tortów</div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="delice-mobile-toggle"
-              onClick={() => setIsMobileMenuOpen(false)}
-              style={{
-                border: "none",
-                background: "#f4f0ec",
-                borderRadius: 8,
-                padding: "6px 10px",
-                cursor: "pointer",
-                fontWeight: 700,
-                color: "#716b65",
-              }}
-            >
-              ✕
-            </button>
-          </div>
-
-          <nav style={navStyle}>
-            <NavButton
-              active={activePanel === "dashboard"}
-              onClick={() => handleNavigate("dashboard")}
-              icon="⌂"
-              label="Dashboard"
-            />
-
-            <NavButton
-              active={activePanel === "new-cake"}
-              onClick={() => handleNavigate("new-cake")}
-              icon="+"
-              label="Nowy tort"
-              primary
-            />
-
-            <div style={navSectionStyle}>KALKULATOR</div>
-
-            <NavButton
-              active={activePanel === "recipes"}
-              onClick={() => handleNavigate("recipes")}
-              icon="R"
-              label="Receptury"
-            />
-
-            <NavButton
-              active={activePanel === "products"}
-              onClick={() => handleNavigate("products")}
-              icon="P"
-              label="Produkty"
-            />
-
-            <div style={navSectionStyle}>ZARZĄDZANIE</div>
-
-            <NavButton
-              active={activePanel === "orders"}
-              onClick={() => handleNavigate("orders")}
-              icon="O"
-              label="Zamówienia"
-            />
-
-            <NavButton
-              active={activePanel === "clients"}
-              onClick={() => handleNavigate("clients")}
-              icon="K"
-              label="Klienci"
-            />
-
-            <NavButton
-              active={activePanel === "costs"}
-              onClick={() => handleNavigate("costs")}
-              icon="Z"
-              label="Koszty"
-            />
-
-            <NavButton
-              active={activePanel === "gallery"}
-              onClick={() => handleNavigate("gallery")}
-              icon="📷"
-              label="Baza zdjęć"
-            />
-          </nav>
-
-          <div style={sidebarBottomStyle}>
-            <div style={userCardStyle}>
-              <div style={userAvatarStyle}>
-                {session?.user?.email?.charAt(0).toUpperCase() || "U"}
-              </div>
-              <div style={userInfoStyle}>
-                <strong style={userEmailStyle}>
-                  {session?.user?.email || "Użytkownik"}
-                </strong>
-                <span style={userRoleStyle}>Administrator</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              style={logoutButtonStyle}
-            >
-              <span>↪</span>
-              Wyloguj się
-            </button>
-          </div>
-        </aside>
-
-        <section style={mainContentStyle}>
-          <header className="delice-no-print" style={topbarStyle}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <button
-                type="button"
-                className="delice-mobile-toggle"
-                onClick={() => setIsMobileMenuOpen(true)}
-                style={{
-                  border: "1px solid #ddd3c9",
-                  background: "#ffffff",
-                  borderRadius: 10,
-                  padding: "8px 12px",
-                  fontSize: 18,
-                  cursor: "pointer",
-                  color: "#292522",
-                }}
-              >
-                ☰
-              </button>
-
-              <div>
-                <div style={topbarEyebrowStyle}>DÉLICE</div>
-                <h1 style={topbarTitleStyle}>{getPanelTitle(activePanel)}</h1>
-              </div>
-            </div>
-
-            <div style={topbarRightStyle}>
-              <div style={statusIndicatorStyle}>
-                <span style={statusDotStyle} />
-                System aktywny
-              </div>
-            </div>
-          </header>
-
-          <div className="delice-content-container" style={contentStyle}>
-            {renderPanel()}
-          </div>
-        </section>
-      </div>
-    </main>
-  );
-}
-
-function NavButton({
-  active,
-  onClick,
-  icon,
-  label,
-  primary = false,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: string;
-  label: string;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        ...navButtonStyle,
-        ...(active ? navButtonActiveStyle : {}),
-        ...(primary ? navPrimaryButtonStyle : {}),
-      }}
-    >
-      <span
-        style={{
-          ...navIconStyle,
-          ...(active ? navIconActiveStyle : {}),
-        }}
-      >
-        {icon}
-      </span>
-      <span>{label}</span>
-    </button>
-  );
-}
-
-function Dashboard({
-  onNavigate,
-  email,
-}: {
-  onNavigate: (panel: ActivePanel) => void;
-  email?: string;
-}) {
-  const [stats, setStats] = useState({
-    activeOrdersCount: 0,
-    activeOrdersValue: 0,
-    recipesCount: 0,
-    productsCount: 0,
-    clientsCount: 0,
-    realizedRevenue: 0,
-    loading: true,
-  });
-
-  useEffect(() => {
-    void loadStats();
-  }, []);
-
-  async function loadStats() {
-    try {
-      const [ordersRes, recipesRes, productsRes, clientsRes] = await Promise.all([
-        supabase.from("orders").select("*"),
-        supabase.from("recipes").select("id", { count: "exact", head: true }),
-        supabase.from("products").select("id", { count: "exact", head: true }),
-        supabase.from("clients").select("id", { count: "exact", head: true }),
-      ]);
-
-      const allOrders = (ordersRes.data || []) as any[];
-
-      const parseVal = (v: any): number => {
-        if (v === null || v === undefined || v === "") return 0;
-        if (typeof v === "number") return v;
-        const num = Number(String(v).replace(",", ".").replace(/[^0-9.-]+/g, "").trim());
-        return Number.isFinite(num) ? num : 0;
-      };
-
-      const active = allOrders.filter((o) => {
-        const s = String(o.status || "").toLowerCase().trim();
-        return s === "nowe" || s === "w_trakcie" || s === "w trakcie" || s === "oczekujace";
-      });
-
-      const activeVal = active.reduce((sum, o) => {
-        const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
-        return sum + price;
-      }, 0);
-
-      const realized = allOrders.filter((o) => {
-        const s = String(o.status || "").toLowerCase().trim();
-        return (
-          s === "zrealizowane" ||
-          s === "zrealizowano" ||
-          s === "zakonczone" ||
-          s === "odebrane" ||
-          s === "oplacone"
-        );
-      });
-
-      const realizedVal = realized.reduce((sum, o) => {
-        const price = parseVal(o.total_price ?? o.price ?? o.kwota ?? 0);
-        return sum + price;
-      }, 0);
-
-      setStats({
-        activeOrdersCount: active.length,
-        activeOrdersValue: activeVal,
-        recipesCount: recipesRes.count || 0,
-        productsCount: productsRes.count || 0,
-        clientsCount: clientsRes.count || 0,
-        realizedRevenue: realizedVal,
-        loading: false,
-      });
-    } catch {
-      setStats((prev) => ({ ...prev, loading: false }));
-    }
-  }
-
-  function formatMoney(val: number) {
-    if (!Number.isFinite(val)) return "0,00 zł";
-    return `${val.toFixed(2).replace(".", ",")} zł`;
-  }
-
-  return (
-    <section>
-      <div style={dashboardWelcomeStyle}>
-        <div>
-          <div style={dashboardEyebrowStyle}>DZIAŁAMY OD 21.08.2026</div>
-          <h2 style={dashboardTitleStyle}>Witaj w pracowni Délice</h2>
-          <p style={dashboardDescriptionStyle}>
-            Bieżące podsumowanie zamówień, wycen, bazy surowców i rentowności. Działamy od 21.08.2026 r.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => onNavigate("new-cake")}
-          style={dashboardPrimaryButtonStyle}
-        >
-          + Nowy tort
-        </button>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "14px",
-          marginBottom: "20px",
-        }}
-      >
-        <div style={{ ...dashboardCardStyle, borderLeft: "4px solid #8a6d4b" }}>
-          <div style={{ fontSize: 11, color: "#8a6d4b", fontWeight: 700 }}>
-            ZAMÓWIENIA W TOKU
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#292522", marginTop: 4 }}>
-            {stats.loading ? "..." : `${stats.activeOrdersCount} szt.`}
-          </div>
-          <div style={{ fontSize: 12, color: "#716b65", marginTop: 2 }}>
-            Wartość: {stats.loading ? "..." : formatMoney(stats.activeOrdersValue)}
-          </div>
-        </div>
-
-        <div style={{ ...dashboardCardStyle, borderLeft: "4px solid #047857" }}>
-          <div style={{ fontSize: 11, color: "#047857", fontWeight: 700 }}>
-            PRZYCHÓD ZE ZREALIZOWANYCH
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#047857", marginTop: 4 }}>
-            {stats.loading ? "..." : formatMoney(stats.realizedRevenue)}
-          </div>
-          <div style={{ fontSize: 12, color: "#716b65", marginTop: 2 }}>
-            Zakończone torty
-          </div>
-        </div>
-
-        <div style={{ ...dashboardCardStyle, borderLeft: "4px solid #2563eb" }}>
-          <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 700 }}>
-            BAZA KLIENTÓW
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#292522", marginTop: 4 }}>
-            {stats.loading ? "..." : `${stats.clientsCount} os.`}
-          </div>
-          <div style={{ fontSize: 12, color: "#716b65", marginTop: 2 }}>
-            Zapisane kontakty
-          </div>
-        </div>
-
-        <div style={{ ...dashboardCardStyle, borderLeft: "4px solid #d97706" }}>
-          <div style={{ fontSize: 11, color: "#d97706", fontWeight: 700 }}>
-            BAZA RECEPTUR I SKŁADNIKÓW
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#292522", marginTop: 4 }}>
-            {stats.loading ? "..." : `${stats.recipesCount} / ${stats.productsCount}`}
-          </div>
-          <div style={{ fontSize: 12, color: "#716b65", marginTop: 2 }}>
-            Receptury / Produkty
-          </div>
-        </div>
-      </div>
-
-      <div style={dashboardGridStyle}>
-        <DashboardCard
-          icon="R"
-          title="Receptury"
-          description={`Zarządzaj ${stats.recipesCount} recepturami i kosztami składników.`}
-          action="Otwórz receptury"
-          onClick={() => onNavigate("recipes")}
-        />
-
-        <DashboardCard
-          icon="P"
-          title="Produkty"
-          description={`Katalog ${stats.productsCount} surowców z aktualnymi cenami.`}
-          action="Otwórz produkty"
-          onClick={() => onNavigate("products")}
-        />
-
-        <DashboardCard
-          icon="O"
-          title="Zamówienia"
-          description={`Obsługuj ${stats.activeOrdersCount} aktywnych zleceń i harmonogram wydań.`}
-          action="Zamówienia"
-          onClick={() => onNavigate("orders")}
-        />
-
-        <DashboardCard
-          icon="K"
-          title="Klienci"
-          description={`Książka ${stats.clientsCount} klientów z preferencjami i alergiami.`}
-          action="Klienci"
-          onClick={() => onNavigate("clients")}
-        />
-      </div>
-
-      <div style={quickStartStyle}>
-        <div style={quickStartIconStyle}>D</div>
-        <div>
-          <strong style={quickStartTitleStyle}>Zalogowano jako</strong>
-          <p style={quickStartTextStyle}>{email || "Użytkownik"}</p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function DashboardCard({
-  icon,
-  title,
-  description,
-  action,
-  onClick,
-}: {
-  icon: string;
-  title: string;
-  description: string;
-  action: string;
-  onClick: () => void;
-}) {
-  return (
-    <div style={dashboardCardStyle}>
-      <div style={dashboardCardIconStyle}>{icon}</div>
-      <h3 style={dashboardCardTitleStyle}>{title}</h3>
-      <p style={dashboardCardDescriptionStyle}>{description}</p>
-      <button
-        type="button"
-        onClick={onClick}
-        style={dashboardCardButtonStyle}
-      >
-        {action} →
-      </button>
     </div>
   );
 }
-
-function getPanelTitle(panel: ActivePanel) {
-  switch (panel) {
-    case "dashboard":
-      return "Dashboard";
-    case "new-cake":
-      return "Nowy tort";
-    case "products":
-      return "Produkty";
-    case "recipes":
-      return "Receptury";
-    case "orders":
-      return "Zamówienia";
-    case "clients":
-      return "Klienci";
-    case "costs":
-      return "Koszty";
-    case "gallery":
-      return "Baza zdjęć tortów";
-    default:
-      return "Délice";
-  }
-}
-
-const loginPageStyle = {
-  minHeight: "100vh",
-  background: "linear-gradient(135deg, #f7f4f1 0%, #eee6dd 100%)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "20px",
-  boxSizing: "border-box" as const,
-  fontFamily: "Arial, Helvetica, sans-serif",
-};
-
-const loginWrapperStyle = {
-  width: "100%",
-  maxWidth: "430px",
-};
-
-const loginBrandStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "13px",
-  marginBottom: "24px",
-};
-
-const loginLogoStyle = {
-  width: "48px",
-  height: "48px",
-  borderRadius: "14px",
-  background: "#8a6d4b",
-  color: "#ffffff",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: "24px",
-  fontWeight: 700,
-};
-
-const loginBrandNameStyle = {
-  color: "#292522",
-  fontSize: "22px",
-  fontWeight: 700,
-};
-
-const loginBrandSubtitleStyle = {
-  color: "#8a837d",
-  fontSize: "11px",
-  marginTop: "2px",
-};
-
-const loginCardStyle = {
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "20px",
-  padding: "28px 24px",
-  boxShadow: "0 15px 50px rgba(80, 60, 40, 0.08)",
-};
-
-const loginHeaderStyle = {
-  marginBottom: "24px",
-};
-
-const loginEyebrowStyle = {
-  color: "#8a6d4b",
-  fontSize: "10px",
-  fontWeight: 700,
-  letterSpacing: "2px",
-  marginBottom: "8px",
-};
-
-const loginTitleStyle = {
-  margin: 0,
-  color: "#292522",
-  fontSize: "26px",
-};
-
-const loginDescriptionStyle = {
-  color: "#716b65",
-  fontSize: "13px",
-  lineHeight: 1.6,
-  margin: "8px 0 0",
-};
-
-const loginLabelStyle = {
-  display: "block",
-  marginBottom: "16px",
-};
-
-const loginLabelTextStyle = {
-  display: "block",
-  color: "#514b46",
-  fontSize: "13px",
-  fontWeight: 600,
-  marginBottom: "7px",
-};
-
-const loginInputStyle = {
-  width: "100%",
-  boxSizing: "border-box" as const,
-  border: "1px solid #ddd3c9",
-  borderRadius: "10px",
-  padding: "12px 13px",
-  background: "#ffffff",
-  color: "#292522",
-  fontSize: "14px",
-  outline: "none",
-};
-
-const loginErrorStyle = {
-  background: "#fff1f0",
-  border: "1px solid #e7b8b3",
-  color: "#9b4d43",
-  borderRadius: "9px",
-  padding: "11px",
-  marginBottom: "14px",
-  fontSize: "13px",
-};
-
-const loginButtonStyle = {
-  width: "100%",
-  border: "none",
-  borderRadius: "10px",
-  padding: "13px",
-  background: "#8a6d4b",
-  color: "#ffffff",
-  fontSize: "14px",
-  fontWeight: 700,
-};
-
-const loginFooterStyle = {
-  textAlign: "center" as const,
-  color: "#9a928b",
-  fontSize: "11px",
-  marginTop: "18px",
-};
-
-const appPageStyle = {
-  minHeight: "100vh",
-  background: "#f7f4f1",
-  fontFamily: "Arial, Helvetica, sans-serif",
-};
-
-const appShellStyle = {
-  minHeight: "100vh",
-  display: "flex",
-};
-
-const sidebarStyle = {
-  width: "250px",
-  minHeight: "100vh",
-  background: "#ffffff",
-  borderRight: "1px solid #e9e2da",
-  display: "flex",
-  flexDirection: "column" as const,
-  boxSizing: "border-box" as const,
-  padding: "22px 15px",
-  flexShrink: 0,
-};
-
-const brandStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "11px",
-  padding: "4px 9px 20px",
-};
-
-const brandLogoStyle = {
-  width: "42px",
-  height: "42px",
-  borderRadius: "12px",
-  background: "#8a6d4b",
-  color: "#ffffff",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontWeight: 700,
-  fontSize: "21px",
-};
-
-const brandNameStyle = {
-  color: "#292522",
-  fontSize: "18px",
-  fontWeight: 700,
-};
-
-const brandSubtitleStyle = {
-  color: "#9a928b",
-  fontSize: "10px",
-  marginTop: "2px",
-};
-
-const navStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "5px",
-};
-
-const navSectionStyle = {
-  color: "#aaa19a",
-  fontSize: "9px",
-  fontWeight: 700,
-  letterSpacing: "1.5px",
-  margin: "18px 10px 5px",
-};
-
-const navButtonStyle = {
-  width: "100%",
-  border: "none",
-  borderRadius: "10px",
-  background: "transparent",
-  color: "#716b65",
-  padding: "10px 11px",
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  textAlign: "left" as const,
-  fontSize: "13px",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const navButtonActiveStyle = {
-  background: "#f2ebe4",
-  color: "#8a6d4b",
-};
-
-const navPrimaryButtonStyle = {
-  background: "#8a6d4b",
-  color: "#ffffff",
-  marginBottom: "5px",
-};
-
-const navIconStyle = {
-  width: "27px",
-  height: "27px",
-  borderRadius: "8px",
-  background: "#f4f0ec",
-  color: "#8a837d",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: "12px",
-  fontWeight: 700,
-  flexShrink: 0,
-};
-
-const navIconActiveStyle = {
-  background: "#ffffff",
-  color: "#8a6d4b",
-};
-
-const sidebarBottomStyle = {
-  marginTop: "auto",
-  paddingTop: "20px",
-  borderTop: "1px solid #eee7e0",
-};
-
-const userCardStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "9px",
-  padding: "8px 5px",
-  marginBottom: "7px",
-};
-
-const userAvatarStyle = {
-  width: "34px",
-  height: "34px",
-  borderRadius: "10px",
-  background: "#f2ebe4",
-  color: "#8a6d4b",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontWeight: 700,
-  fontSize: "13px",
-  flexShrink: 0,
-};
-
-const userInfoStyle = {
-  minWidth: 0,
-};
-
-const userEmailStyle = {
-  display: "block",
-  color: "#514b46",
-  fontSize: "11px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap" as const,
-  maxWidth: "175px",
-};
-
-const userRoleStyle = {
-  display: "block",
-  color: "#aaa19a",
-  fontSize: "10px",
-  marginTop: "2px",
-};
-
-const logoutButtonStyle = {
-  width: "100%",
-  border: "1px solid #e9e2da",
-  borderRadius: "9px",
-  background: "#ffffff",
-  color: "#716b65",
-  padding: "9px 11px",
-  display: "flex",
-  alignItems: "center",
-  gap: "8px",
-  cursor: "pointer",
-  fontSize: "12px",
-};
-
-const mainContentStyle = {
-  flex: 1,
-  minWidth: 0,
-};
-
-const topbarStyle = {
-  height: "76px",
-  background: "#ffffff",
-  borderBottom: "1px solid #e9e2da",
-  padding: "0 20px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  boxSizing: "border-box" as const,
-};
-
-const topbarEyebrowStyle = {
-  color: "#aaa19a",
-  fontSize: "9px",
-  fontWeight: 700,
-  letterSpacing: "1.5px",
-  marginBottom: "3px",
-};
-
-const topbarTitleStyle = {
-  margin: 0,
-  color: "#292522",
-  fontSize: "20px",
-};
-
-const topbarRightStyle = {
-  display: "flex",
-  alignItems: "center",
-};
-
-const statusIndicatorStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "7px",
-  color: "#716b65",
-  fontSize: "11px",
-};
-
-const statusDotStyle = {
-  width: "7px",
-  height: "7px",
-  borderRadius: "50%",
-  background: "#477451",
-};
-
-const contentStyle = {
-  padding: "30px",
-  boxSizing: "border-box" as const,
-  maxWidth: "1600px",
-};
-
-const dashboardWelcomeStyle = {
-  background: "linear-gradient(135deg, #ffffff 0%, #fbf8f5 100%)",
-  border: "1px solid #e9e2da",
-  borderRadius: "18px",
-  padding: "24px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "20px",
-  marginBottom: "20px",
-  flexWrap: "wrap" as const,
-};
-
-const dashboardEyebrowStyle = {
-  color: "#8a6d4b",
-  fontSize: "10px",
-  fontWeight: 700,
-  letterSpacing: "2px",
-  marginBottom: "7px",
-};
-
-const dashboardTitleStyle = {
-  margin: 0,
-  color: "#292522",
-  fontSize: "24px",
-};
-
-const dashboardDescriptionStyle = {
-  margin: "8px 0 0",
-  color: "#716b65",
-  fontSize: "13px",
-  lineHeight: 1.6,
-  maxWidth: "650px",
-};
-
-const dashboardPrimaryButtonStyle = {
-  border: "none",
-  borderRadius: "10px",
-  background: "#8a6d4b",
-  color: "#ffffff",
-  padding: "12px 18px",
-  fontSize: "13px",
-  fontWeight: 700,
-  cursor: "pointer",
-  whiteSpace: "nowrap" as const,
-};
-
-const dashboardGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: "15px",
-};
-
-const dashboardCardStyle = {
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "16px",
-  padding: "20px",
-};
-
-const dashboardCardIconStyle = {
-  width: "38px",
-  height: "38px",
-  borderRadius: "11px",
-  background: "#f2ebe4",
-  color: "#8a6d4b",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontWeight: 700,
-  fontSize: "14px",
-  marginBottom: "14px",
-};
-
-const dashboardCardTitleStyle = {
-  margin: 0,
-  color: "#292522",
-  fontSize: "16px",
-};
-
-const dashboardCardDescriptionStyle = {
-  color: "#8a837d",
-  fontSize: "12px",
-  lineHeight: 1.5,
-  minHeight: "44px",
-};
-
-const dashboardCardButtonStyle = {
-  border: "none",
-  background: "transparent",
-  padding: 0,
-  color: "#8a6d4b",
-  fontSize: "12px",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const quickStartStyle = {
-  marginTop: "20px",
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "16px",
-  padding: "18px",
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-};
-
-const quickStartIconStyle = {
-  width: "38px",
-  height: "38px",
-  borderRadius: "11px",
-  background: "#f0f8f2",
-  color: "#477451",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontWeight: 700,
-};
-
-const quickStartTitleStyle = {
-  display: "block",
-  color: "#514b46",
-  fontSize: "12px",
-};
-
-const quickStartTextStyle = {
-  margin: "3px 0 0",
-  color: "#8a837d",
-  fontSize: "12px",
-};
-
-const loadingPageStyle = {
-  minHeight: "100vh",
-  background: "#f7f4f1",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontFamily: "Arial, Helvetica, sans-serif",
-};
-
-const loadingCardStyle = {
-  background: "#ffffff",
-  border: "1px solid #e9e2da",
-  borderRadius: "16px",
-  padding: "30px 40px",
-  display: "flex",
-  flexDirection: "column" as const,
-  alignItems: "center",
-  gap: "8px",
-  color: "#716b65",
-  fontSize: "13px",
-};
