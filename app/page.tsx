@@ -6,6 +6,7 @@ import Recipes from "../components/Recipes";
 import Products from "../components/Products";
 import CakeCalculator from "../components/CakeCalculator";
 import Orders from "../components/Orders";
+import Clients from "../components/Clients";
 
 type ActivePanel =
   | "dashboard"
@@ -111,12 +112,7 @@ export default function Home() {
         return <Orders />;
 
       case "clients":
-        return (
-          <ComingSoon
-            title="Klienci"
-            description="Tutaj powstanie baza klientów wraz z historią zamówień."
-          />
-        );
+        return <Clients />;
 
       case "costs":
         return (
