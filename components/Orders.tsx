@@ -5,19 +5,18 @@ import { supabase } from "../lib/supabase";
 
 export type Order = {
   id: string;
-  client_id?: string | null;
   client_name: string;
   client_phone: string | null;
-  client_address: string | null;
+  delivery_date: string;
+  delivery_time?: string | null;
   cake_name: string;
   diameter_cm: number;
   height_cm: number;
   portions: number;
+  description: string | null;
   total_price: number;
-  deposit: number;
-  delivery_date: string;
+  advance_payment: number;
   status: "nowe" | "w_trakcie" | "zrealizowane" | "anulowane";
-  notes: string | null;
   created_at: string;
 };
 
@@ -25,40 +24,40 @@ type ClientOption = {
   id: string;
   name: string;
   phone: string | null;
-  address: string | null;
-  notes: string | null;
+  address?: string | null;
+  notes?: string | null;
 };
 
 type OrderForm = {
   client_id: string;
   client_name: string;
   client_phone: string;
-  client_address: string;
+  delivery_time: string;
   cake_name: string;
   diameter_cm: string;
   height_cm: string;
   portions: string;
   total_price: string;
-  deposit: string;
+  advance_payment: string;
   delivery_date: string;
   status: "nowe" | "w_trakcie" | "zrealizowane" | "anulowane";
-  notes: string;
+  description: string;
 };
 
 const emptyOrderForm: OrderForm = {
   client_id: "",
   client_name: "",
   client_phone: "",
-  client_address: "",
+  delivery_time: "14:00",
   cake_name: "",
   diameter_cm: "18",
   height_cm: "12",
   portions: "14",
   total_price: "",
-  deposit: "0",
+  advance_payment: "0",
   delivery_date: new Date().toISOString().slice(0, 10),
   status: "nowe",
-  notes: "",
+  description: "",
 };
 
 export default function Orders() {
@@ -81,26 +80,21 @@ export default function Orders() {
     setLoading(true);
     setError("");
 
-    const [ordersRes, clientsRes] = await Promise.all([
-      supabase.from("orders").select("*").order("delivery_date", { ascending: true }),
-      supabase.from("clients").select("id, name, phone, address, notes").order("name", { ascending: true }),
-    ]);
+    try {
+      const [ordersRes, clientsRes] = await Promise.all([
+        supabase.from("orders").select("*").order("delivery_date", { ascending: true }),
+        supabase.from("clients").select("id, name, phone, notes").order("name", { ascending: true }),
+      ]);
 
-    if (ordersRes.error) {
-      setError(`Nie udało się pobrać zamówień: ${ordersRes.error.message}`);
+      if (ordersRes.error) throw ordersRes.error;
+
+      setOrders((ordersRes.data ?? []) as Order[]);
+      setClients((clientsRes.data ?? []) as ClientOption[]);
+    } catch (err: any) {
+      setError(`Błąd pobierania danych: ${err.message}`);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (clientsRes.error) {
-      setError(`Nie udało się pobrać bazy klientów: ${clientsRes.error.message}`);
-      setLoading(false);
-      return;
-    }
-
-    setOrders((ordersRes.data ?? []) as Order[]);
-    setClients((clientsRes.data ?? []) as ClientOption[]);
-    setLoading(false);
   }
 
   function parseDecimal(value: string): number {
@@ -134,9 +128,8 @@ export default function Orders() {
         client_id: selected.id,
         client_name: selected.name,
         client_phone: selected.phone || "",
-        client_address: selected.address || "",
-        notes: prev.notes
-          ? prev.notes
+        description: prev.description
+          ? prev.description
           : selected.notes
           ? `Uwagi klienta: ${selected.notes}`
           : "",
@@ -147,19 +140,19 @@ export default function Orders() {
   function startEditing(order: Order) {
     setEditingId(order.id);
     setForm({
-      client_id: order.client_id || "",
+      client_id: "",
       client_name: order.client_name,
       client_phone: order.client_phone ?? "",
-      client_address: order.client_address ?? "",
+      delivery_time: order.delivery_time ?? "14:00",
       cake_name: order.cake_name,
       diameter_cm: String(order.diameter_cm),
       height_cm: String(order.height_cm),
       portions: String(order.portions),
       total_price: String(order.total_price).replace(".", ","),
-      deposit: String(order.deposit).replace(".", ","),
+      advance_payment: String(order.advance_payment ?? 0).replace(".", ","),
       delivery_date: order.delivery_date,
       status: order.status,
-      notes: order.notes ?? "",
+      description: order.description ?? "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -196,16 +189,16 @@ export default function Orders() {
     const payload = {
       client_name: form.client_name.trim(),
       client_phone: form.client_phone.trim() || null,
-      client_address: form.client_address.trim() || null,
+      delivery_time: form.delivery_time.trim() || null,
       cake_name: form.cake_name.trim(),
       diameter_cm: Number(form.diameter_cm) || 18,
       height_cm: Number(form.height_cm) || 12,
       portions: Number(form.portions) || 14,
       total_price: parseDecimal(form.total_price),
-      deposit: parseDecimal(form.deposit),
+      advance_payment: parseDecimal(form.advance_payment),
       delivery_date: form.delivery_date,
       status: form.status,
-      notes: form.notes.trim() || null,
+      description: form.description.trim() || null,
     };
 
     try {
@@ -216,7 +209,7 @@ export default function Orders() {
           .eq("id", editingId);
 
         if (updateError) throw updateError;
-        setSuccess("Zamówienie zostało pomyślnie zaktualizowane.");
+        setSuccess("Zamówienie zostało zaktualizowane.");
       } else {
         const { error: insertError } = await supabase.from("orders").insert(payload);
         if (insertError) throw insertError;
@@ -394,12 +387,12 @@ export default function Orders() {
             </label>
 
             <label style={labelStyle}>
-              Adres / Miejsce dostawy
+              Godzina odbioru
               <input
                 type="text"
-                value={form.client_address}
-                onChange={(e) => updateForm("client_address", e.target.value)}
-                placeholder="np. Białystok (lub odbiór własny)"
+                value={form.delivery_time}
+                onChange={(e) => updateForm("delivery_time", e.target.value)}
+                placeholder="np. 14:00"
                 style={inputStyle}
               />
             </label>
@@ -479,8 +472,8 @@ export default function Orders() {
               <input
                 type="text"
                 inputMode="decimal"
-                value={form.deposit}
-                onChange={(e) => updateForm("deposit", e.target.value)}
+                value={form.advance_payment}
+                onChange={(e) => updateForm("advance_payment", e.target.value)}
                 placeholder="np. 100,00"
                 style={inputStyle}
               />
@@ -505,9 +498,9 @@ export default function Orders() {
             Szczegóły dekoracji / Uwagi / Alergie
             <textarea
               rows={3}
-              value={form.notes}
-              onChange={(e) => updateForm("notes", e.target.value)}
-              placeholder="np. Napis: 30 Lat Ani, żywe kwiaty, bez orzechów, odbiór o godz. 14:00"
+              value={form.description}
+              onChange={(e) => updateForm("description", e.target.value)}
+              placeholder="np. Napis: 30 Lat Ani, żywe kwiaty, bez orzechów"
               style={{ ...inputStyle, resize: "vertical" }}
             />
           </label>
@@ -567,7 +560,7 @@ export default function Orders() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {filteredOrders.map((order) => {
-              const remaining = Number(order.total_price || 0) - Number(order.deposit || 0);
+              const remaining = Number(order.total_price || 0) - Number(order.advance_payment || 0);
 
               return (
                 <div
@@ -585,13 +578,13 @@ export default function Orders() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
                     <div>
                       <div style={{ fontSize: 11, color: "#8a6d4b", fontWeight: 700 }}>
-                        TERMIN WYDANIA: {order.delivery_date}
+                        TERMIN WYDANIA: {order.delivery_date} {order.delivery_time ? `(godz. ${order.delivery_time})` : ""}
                       </div>
                       <h4 style={{ margin: "3px 0 0", fontSize: 18, color: "#292522" }}>
                         {order.cake_name} ({order.diameter_cm} cm × {order.height_cm} cm, {order.portions} porcji)
                       </h4>
                       <div style={{ marginTop: 4, fontSize: 13, color: "#514b46" }}>
-                        Klient: <strong>{order.client_name}</strong> {order.client_phone ? `| 📞 ${order.client_phone}` : ""} {order.client_address ? `| 📍 ${order.client_address}` : ""}
+                        Klient: <strong>{order.client_name}</strong> {order.client_phone ? `| 📞 ${order.client_phone}` : ""}
                       </div>
                     </div>
 
@@ -605,9 +598,9 @@ export default function Orders() {
                     </div>
                   </div>
 
-                  {order.notes && (
+                  {order.description && (
                     <div style={{ background: "#ffffff", padding: "10px 14px", borderRadius: 9, fontSize: 13, color: "#514b46", border: "1px solid #eee7e0" }}>
-                      <strong>Uwagi:</strong> {order.notes}
+                      <strong>Uwagi:</strong> {order.description}
                     </div>
                   )}
 
