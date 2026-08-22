@@ -24,7 +24,6 @@ type ClientOption = {
   id: string;
   name: string;
   phone: string | null;
-  address?: string | null;
   notes?: string | null;
 };
 
@@ -72,6 +71,12 @@ export default function Orders() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // Modale podglądu / drukowania
+  const [selectedOrderForMessage, setSelectedOrderForMessage] = useState<Order | null>(null);
+  const [selectedOrderForLabel, setSelectedOrderForLabel] = useState<Order | null>(null);
+  const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<Order | null>(null);
+  const [copiedText, setCopiedText] = useState(false);
+
   useEffect(() => {
     void loadData();
   }, []);
@@ -114,10 +119,7 @@ export default function Orders() {
 
   function handleClientSelect(clientId: string) {
     if (!clientId) {
-      setForm((prev) => ({
-        ...prev,
-        client_id: "",
-      }));
+      setForm((prev) => ({ ...prev, client_id: "" }));
       return;
     }
 
@@ -252,6 +254,34 @@ export default function Orders() {
     }
   }
 
+  // Generowanie tekstu wiadomości dla klienta
+  function generateClientMessageText(order: Order): string {
+    const remaining = Number(order.total_price || 0) - Number(order.advance_payment || 0);
+    return `Dzień dobry ${order.client_name}! 🍰✨
+
+Potwierdzamy przyjęcie zamówienia w Pracowni Délice:
+🎂 Tort: ${order.cake_name}
+📐 Rozmiar: ⌀${order.diameter_cm} cm (${order.portions} porcji)
+🗓 Termin odbioru: ${order.delivery_date}${order.delivery_time ? ` (godz. ${order.delivery_time})` : ""}
+${order.description ? `📌 Uwagi / dekoracja: ${order.description}\n` : ""}
+💰 Całkowity koszt: ${formatMoney(order.total_price)}
+💵 Wpłacona zaliczka: ${formatMoney(order.advance_payment)}
+👉 Pozostało do dopłaty przy odbiorze: ${formatMoney(remaining)}
+
+📍 Adres odbioru pracowni: ul. Cukiernicza 12, Pracownia Délice
+📞 W razie pytań prosimy o kontakt: 600 700 800
+
+Dziękujemy za zaufanie i do zobaczenia!`;
+  }
+
+  function handleCopyMessage(order: Order) {
+    const text = generateClientMessageText(order);
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2500);
+    });
+  }
+
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       const matchesStatus = statusFilter === "all" || o.status === statusFilter;
@@ -303,30 +333,47 @@ export default function Orders() {
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", paddingBottom: 60 }}>
-      <div style={{ marginBottom: 24 }}>
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #printable-label, #printable-label * { visibility: visible !important; }
+          #printable-invoice, #printable-invoice * { visibility: visible !important; }
+          #printable-label, #printable-invoice {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+          .delice-no-print { display: none !important; }
+        }
+      `}</style>
+
+      <div className="delice-no-print" style={{ marginBottom: 24 }}>
         <div style={{ color: "#8a6d4b", fontSize: 11, fontWeight: 700, letterSpacing: 2 }}>
           HARMONOGRAM I ZAMÓWIENIA
         </div>
         <h2 style={{ margin: "4px 0 0", fontSize: 28, color: "#292522" }}>Zamówienia</h2>
         <p style={{ margin: "6px 0 0", color: "#716b65" }}>
-          Rejestruj zlecenia, terminy wydań, zaliczki i monitoruj realizację wypieków.
+          Rejestruj zlecenia, generuj potwierdzenia dla klientów (WhatsApp/SMS) oraz drukuj etykiety na pudełka z alergenami.
         </p>
       </div>
 
       {error && (
-        <div style={{ padding: 14, background: "#fee2e2", color: "#b91c1c", borderRadius: 12, marginBottom: 20 }}>
+        <div className="delice-no-print" style={{ padding: 14, background: "#fee2e2", color: "#b91c1c", borderRadius: 12, marginBottom: 20 }}>
           {error}
         </div>
       )}
 
       {success && (
-        <div style={{ padding: 14, background: "#ecfdf5", color: "#047857", borderRadius: 12, marginBottom: 20 }}>
+        <div className="delice-no-print" style={{ padding: 14, background: "#ecfdf5", color: "#047857", borderRadius: 12, marginBottom: 20 }}>
           {success}
         </div>
       )}
 
       {/* FORMULARZ ZAMÓWIENIA */}
-      <div style={{ ...cardStyle, marginBottom: 24 }}>
+      <div className="delice-no-print" style={{ ...cardStyle, marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>
             {editingId ? "Edycja zamówienia" : "+ Nowe zamówienie na tort"}
@@ -343,7 +390,6 @@ export default function Orders() {
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Wybór z bazy klientów */}
           <div style={{ background: "#fdfbf9", border: "1px solid #e9e2da", borderRadius: 12, padding: 16 }}>
             <label style={labelStyle}>
               <span>👤 Wybierz klienta z bazy (lub wpisz poniżej nowego):</span>
@@ -416,7 +462,7 @@ export default function Orders() {
                 type="text"
                 value={form.cake_name}
                 onChange={(e) => updateForm("cake_name", e.target.value)}
-                placeholder="np. Tort Urodzinowy Mango-Marakuja"
+                placeholder="np. Tort Urodzinowy Pistacja-Malina"
                 required
                 style={inputStyle}
               />
@@ -522,7 +568,7 @@ export default function Orders() {
       </div>
 
       {/* LISTA ZAMÓWIEŃ */}
-      <div style={cardStyle}>
+      <div className="delice-no-print" style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
           <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>
             Lista zamówień ({filteredOrders.length})
@@ -604,6 +650,33 @@ export default function Orders() {
                     </div>
                   )}
 
+                  {/* PRZYCISKI AKCJI SPECJALNYCH DLA KLIENTA I ETYKIET */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", background: "#ffffff", padding: "10px 12px", borderRadius: 10, border: "1px solid #eee7e0" }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOrderForMessage(order)}
+                      style={{ ...buttonStyle, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", padding: "6px 12px", fontSize: 12 }}
+                    >
+                      📱 Wiadomość dla klienta (WhatsApp / SMS)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOrderForLabel(order)}
+                      style={{ ...buttonStyle, background: "#fefce8", color: "#854d0e", border: "1px solid #fef08a", padding: "6px 12px", fontSize: 12 }}
+                    >
+                      🏷 Etykieta na pudełko (Alergeny)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOrderForInvoice(order)}
+                      style={{ ...buttonStyle, background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", padding: "6px 12px", fontSize: 12 }}
+                    >
+                      📄 Potwierdzenie / Karta wydania (PDF)
+                    </button>
+                  </div>
+
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #eee7e0", paddingTop: 12, flexWrap: "wrap", gap: 10 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <span style={{ fontSize: 12, color: "#716b65" }}>Zmień status:</span>
@@ -671,6 +744,284 @@ export default function Orders() {
           </div>
         )}
       </div>
+
+      {/* MODAL 1: WIADOMOŚĆ DLA KLIENTA (WHATSAPP / SMS) */}
+      {selectedOrderForMessage && (
+        <div
+          className="delice-no-print"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            zIndex: 1000,
+          }}
+          onClick={() => setSelectedOrderForMessage(null)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 600,
+              background: "#fff",
+              borderRadius: 18,
+              padding: 24,
+              boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>📱 Wiadomość dla klienta</h3>
+              <button
+                type="button"
+                onClick={() => setSelectedOrderForMessage(null)}
+                style={{ border: "none", background: "#f3f4f6", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 16 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: 13, color: "#716b65", margin: "0 0 12px" }}>
+              Skopiuj poniższy gotowy tekst lub kliknij, aby otworzyć bezpośrednio na WhatsApp:
+            </p>
+
+            <textarea
+              readOnly
+              rows={12}
+              value={generateClientMessageText(selectedOrderForMessage)}
+              style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12, resize: "none", background: "#fdfbf9", lineHeight: 1.5 }}
+            />
+
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button
+                type="button"
+                onClick={() => handleCopyMessage(selectedOrderForMessage)}
+                style={{ ...buttonStyle, flex: 1, background: "#047857", color: "#fff" }}
+              >
+                {copiedText ? "✓ Skopiowano do schowka!" : "📋 Kopiuj treść wiadomości"}
+              </button>
+
+              {selectedOrderForMessage.client_phone && (
+                <a
+                  href={`https://wa.me/48${selectedOrderForMessage.client_phone.replace(/\s+/g, "")}?text=${encodeURIComponent(
+                    generateClientMessageText(selectedOrderForMessage)
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    ...buttonStyle,
+                    background: "#25D366",
+                    color: "#fff",
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  Otwórz WhatsApp
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: ETYKIETA NA PUDEŁKO (ALERGENY I ZALECENIA) */}
+      {selectedOrderForLabel && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            zIndex: 1000,
+          }}
+          onClick={() => setSelectedOrderForLabel(null)}
+        >
+          <div
+            id="printable-label"
+            style={{
+              width: "100%",
+              maxWidth: 500,
+              background: "#ffffff",
+              borderRadius: 16,
+              padding: 26,
+              border: "2px dashed #8a6d4b",
+              boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ textAlign: "center", borderBottom: "1px solid #eee7e0", paddingBottom: 14, marginBottom: 14 }}>
+              <div style={{ fontSize: 18, fontWeight: 900, color: "#8a6d4b", letterSpacing: 2 }}>DÉLICE</div>
+              <div style={{ fontSize: 10, color: "#716b65", textTransform: "uppercase" }}>Autorska Pracownia Tortów</div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: "#8a6d4b", fontWeight: 700 }}>TORT ARTYSTYCZNY DLA:</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "#292522" }}>{selectedOrderForLabel.client_name}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#514b46", marginTop: 2 }}>
+                Smak / Styl: {selectedOrderForLabel.cake_name}
+              </div>
+              <div style={{ fontSize: 12, color: "#716b65", marginTop: 2 }}>
+                Data wydania: <strong>{selectedOrderForLabel.delivery_date}</strong> (⌀{selectedOrderForLabel.diameter_cm}cm, {selectedOrderForLabel.portions}p)
+              </div>
+            </div>
+
+            <div style={{ background: "#fffdfa", border: "1px solid #e9e2da", borderRadius: 8, padding: 10, marginBottom: 14, fontSize: 11, color: "#514b46" }}>
+              <strong style={{ color: "#b91c1c", display: "block", marginBottom: 3 }}>⚠️ INFORMACJA O ALERGENACH:</strong>
+              Produkt może zawierać: gluten, jaja, mleko i produkty pochodne (laktoza), orzechy, soję, żelatynę wieprzową.
+            </div>
+
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 10, fontSize: 11, color: "#166534", lineHeight: 1.4 }}>
+              <strong>❄️ ZALECENIA DOTYCZĄCE PRZECHOWYWANIA I KROJENIA:</strong>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                <li>Przechowywać w lodówce w temp. 4–7°C w zamkniętym pudełku.</li>
+                <li>Wyjąć z lodówki na 20–30 minut przed podaniem (kremy uzyskają idealną aksamitność).</li>
+                <li>Kroić gorącym, suchym nożem zanurzanym we wrzątku.</li>
+                <li>Elementy dekoracyjne (topper, żywe kwiaty, wykałaczki) są niejadalne.</li>
+              </ul>
+            </div>
+
+            <div className="delice-no-print" style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                style={{ ...buttonStyle, flex: 1, background: "#8a6d4b", color: "#fff" }}
+              >
+                🖨 Drukuj etykietę na pudełko
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedOrderForLabel(null)}
+                style={{ ...buttonStyle, background: "#f3f4f6", color: "#374151" }}
+              >
+                Zamknij
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: POTWIERDZENIE ZAMÓWIENIA / KARTA WYDANIA (PDF) */}
+      {selectedOrderForInvoice && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            zIndex: 1000,
+          }}
+          onClick={() => setSelectedOrderForInvoice(null)}
+        >
+          <div
+            id="printable-invoice"
+            style={{
+              width: "100%",
+              maxWidth: 650,
+              background: "#ffffff",
+              borderRadius: 16,
+              padding: 30,
+              boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #8a6d4b", paddingBottom: 16, marginBottom: 20 }}>
+              <div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: "#8a6d4b", letterSpacing: 2 }}>DÉLICE</div>
+                <div style={{ fontSize: 11, color: "#716b65" }}>Autorska Pracownia Tortów i Ciast</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#292522" }}>KARTA ZAMÓWIENIA</div>
+                <div style={{ fontSize: 12, color: "#716b65" }}>Data: {selectedOrderForInvoice.delivery_date}</div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+              <div style={{ background: "#fdfbf9", padding: 14, borderRadius: 10, border: "1px solid #eee7e0" }}>
+                <div style={{ fontSize: 11, color: "#8a6d4b", fontWeight: 700, marginBottom: 4 }}>DANE ZAMAWIAJĄCEGO:</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#292522" }}>{selectedOrderForInvoice.client_name}</div>
+                {selectedOrderForInvoice.client_phone && (
+                  <div style={{ fontSize: 13, color: "#514b46", marginTop: 2 }}>📞 {selectedOrderForInvoice.client_phone}</div>
+                )}
+              </div>
+
+              <div style={{ background: "#fdfbf9", padding: 14, borderRadius: 10, border: "1px solid #eee7e0" }}>
+                <div style={{ fontSize: 11, color: "#8a6d4b", fontWeight: 700, marginBottom: 4 }}>TERMIN ODBIORU:</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#292522" }}>{selectedOrderForInvoice.delivery_date}</div>
+                <div style={{ fontSize: 13, color: "#514b46", marginTop: 2 }}>Godzina: {selectedOrderForInvoice.delivery_time || "do ustalenia"}</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#f4f0ec", color: "#8a6d4b", textAlign: "left" }}>
+                    <th style={{ padding: 10 }}>POZYCJA</th>
+                    <th style={{ padding: 10 }}>PARAMETRY</th>
+                    <th style={{ padding: 10, textAlign: "right" }}>WARTOŚĆ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: "1px solid #eee7e0" }}>
+                    <td style={{ padding: 12, fontWeight: 700 }}>{selectedOrderForInvoice.cake_name}</td>
+                    <td style={{ padding: 12 }}>⌀{selectedOrderForInvoice.diameter_cm} cm × {selectedOrderForInvoice.height_cm} cm ({selectedOrderForInvoice.portions}p)</td>
+                    <td style={{ padding: 12, textAlign: "right", fontWeight: 800 }}>{formatMoney(selectedOrderForInvoice.total_price)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {selectedOrderForInvoice.description && (
+              <div style={{ background: "#fdfbf9", padding: 12, borderRadius: 8, border: "1px solid #eee7e0", fontSize: 12, marginBottom: 20 }}>
+                <strong>Uwagi do zamówienia / dekoracja:</strong> {selectedOrderForInvoice.description}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 24 }}>
+              <div style={{ width: 260, display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Wartość zamówienia:</span>
+                  <strong>{formatMoney(selectedOrderForInvoice.total_price)}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", color: "#047857" }}>
+                  <span>Wpłacona zaliczka:</span>
+                  <strong>{formatMoney(selectedOrderForInvoice.advance_payment)}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, borderTop: "2px solid #8a6d4b", paddingTop: 6, color: "#8a6d4b" }}>
+                  <span>Do zapłaty:</span>
+                  <span>{formatMoney(Number(selectedOrderForInvoice.total_price || 0) - Number(selectedOrderForInvoice.advance_payment || 0))}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="delice-no-print" style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                style={{ ...buttonStyle, flex: 1, background: "#8a6d4b", color: "#fff" }}
+              >
+                🖨 Drukuj kartę zamówienia / Zapisz PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedOrderForInvoice(null)}
+                style={{ ...buttonStyle, background: "#f3f4f6", color: "#374151" }}
+              >
+                Zamknij
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
