@@ -10,6 +10,7 @@ type Product = {
   unit: string | null;
   package_quantity: number | null;
   package_price: number | null;
+  stock_quantity?: number | null;
   notes: string | null;
   active: boolean;
   created_at: string;
@@ -29,8 +30,8 @@ type ProductForm = {
 const emptyForm: ProductForm = {
   name: "",
   category: "",
-  unit: "",
-  packageQuantity: "",
+  unit: "g",
+  packageQuantity: "1000",
   packagePrice: "",
   notes: "",
   active: true,
@@ -62,7 +63,7 @@ export default function Products() {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    loadProducts();
+    void loadProducts();
   }, []);
 
   async function loadProducts() {
@@ -102,7 +103,7 @@ export default function Products() {
     setForm({
       name: product.name ?? "",
       category: product.category ?? "",
-      unit: product.unit ?? "",
+      unit: product.unit ?? "g",
       packageQuantity:
         product.package_quantity !== null
           ? String(product.package_quantity).replace(".", ",")
@@ -154,43 +155,35 @@ export default function Products() {
       return;
     }
 
-    const quantityValue =
-      form.packageQuantity.trim() === ""
-        ? null
-        : Number(
-            form.packageQuantity.replace(",", ".")
-          );
-
-    const priceValue =
-      form.packagePrice.trim() === ""
-        ? null
-        : Number(
-            form.packagePrice.replace(",", ".")
-          );
-
-    if (
-      quantityValue !== null &&
-      (!Number.isFinite(quantityValue) ||
-        quantityValue <= 0)
-    ) {
-      setError(
-        "Ilość w opakowaniu musi być liczbą większą od zera."
-      );
+    if (!form.packageQuantity.trim()) {
+      setError("Podaj ilość w opakowaniu (np. 1000 dla 1 kg mąki lub 500 dla mascarpone).");
       return;
     }
 
-    if (
-      priceValue !== null &&
-      (!Number.isFinite(priceValue) ||
-        priceValue < 0)
-    ) {
-      setError(
-        "Cena opakowania musi być prawidłową liczbą."
-      );
+    if (!form.packagePrice.trim()) {
+      setError("Podaj cenę opakowania (np. 4,50).");
       return;
     }
 
-    const productData = {
+    const quantityValue = Number(
+      form.packageQuantity.replace(",", ".").trim()
+    );
+
+    const priceValue = Number(
+      form.packagePrice.replace(",", ".").trim()
+    );
+
+    if (!Number.isFinite(quantityValue) || quantityValue <= 0) {
+      setError("Ilość w opakowaniu musi być liczbą większą od zera.");
+      return;
+    }
+
+    if (!Number.isFinite(priceValue) || priceValue < 0) {
+      setError("Cena opakowania musi być prawidłową liczbą dodatnią.");
+      return;
+    }
+
+    const productData: any = {
       name: cleanName,
       category: form.category.trim() || null,
       unit: cleanUnit,
@@ -218,6 +211,8 @@ export default function Products() {
 
       setSuccess("Produkt został zaktualizowany.");
     } else {
+      productData.stock_quantity = 0;
+
       const { error: insertError } = await supabase
         .from("products")
         .insert(productData);
@@ -230,7 +225,7 @@ export default function Products() {
         return;
       }
 
-      setSuccess("Produkt został dodany.");
+      setSuccess("Produkt został dodany do bazy i magazynu.");
     }
 
     setForm(emptyForm);
@@ -254,7 +249,6 @@ export default function Products() {
     setSuccess("");
 
     try {
-      // Bezpieczne odpięcie z receptur przed skasowaniem
       await supabase.from("recipe_ingredients").delete().eq("product_id", product.id);
       await supabase.from("recipe_items").delete().eq("product_id", product.id);
 
@@ -527,10 +521,6 @@ export default function Products() {
                   disabled={saving}
                   style={inputStyle}
                 >
-                  <option value="">
-                    Wybierz jednostkę
-                  </option>
-
                   <option value="g">
                     g — gram
                   </option>
@@ -567,7 +557,7 @@ export default function Products() {
 
               <label style={labelStyle}>
                 <span style={labelTextStyle}>
-                  Ilość w opakowaniu
+                  Ilość w opakowaniu *
                 </span>
 
                 <input
@@ -580,7 +570,7 @@ export default function Products() {
                       event.target.value
                     )
                   }
-                  placeholder="np. 500"
+                  placeholder="np. 1000"
                   disabled={saving}
                   style={inputStyle}
                 />
@@ -589,7 +579,7 @@ export default function Products() {
 
             <label style={labelStyle}>
               <span style={labelTextStyle}>
-                Cena opakowania
+                Cena opakowania (zł) *
               </span>
 
               <div
@@ -605,7 +595,7 @@ export default function Products() {
                       event.target.value
                     )
                   }
-                  placeholder="np. 8,99"
+                  placeholder="np. 4,50"
                   disabled={saving}
                   style={priceInputStyle}
                 />
