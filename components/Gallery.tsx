@@ -33,7 +33,6 @@ export default function Gallery() {
   const [search, setSearch] = useState("");
   const [activeModalPhoto, setActiveModalPhoto] = useState<CakePhoto | null>(null);
 
-  // Pola formularza
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("Urodzinowe");
   const [imageUrl, setImageUrl] = useState("");
@@ -188,7 +187,7 @@ export default function Gallery() {
         </div>
       )}
 
-      {/* FORMULARZ */}
+      {/* FORMULARZ DODAWANIA ZDJĘCIA */}
       <div style={{ ...cardStyle, marginBottom: 24 }}>
         <h3 style={{ margin: "0 0 16px", fontSize: 18, color: "#292522" }}>
           + Dodaj nowe zdjęcie do portfolio
@@ -202,7 +201,7 @@ export default function Gallery() {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="np. Tort Piętrowy z eustomami"
+                placeholder="np. Tort Piętrowy z żywymi kwiatami"
                 required
                 style={inputStyle}
               />
@@ -234,12 +233,12 @@ export default function Gallery() {
             </label>
 
             <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
-              🔗 lub wklej link do zdjęcia
+              🔗 lub wklej bezpośredni link URL
               <input
                 type="url"
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://twojadomena.pl/zdjecie.jpg"
+                placeholder="https://domena.pl/zdjecie.jpg"
                 style={inputStyle}
               />
             </label>
