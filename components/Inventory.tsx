@@ -11,7 +11,7 @@ export interface ProductStock {
   package_quantity: number | null;
   package_price: number | null;
   stock_quantity: number | null;
-  active: boolean;
+  active?: boolean | null;
 }
 
 export interface OrderReq {
@@ -24,25 +24,28 @@ export interface OrderReq {
 export interface RecipeLink {
   id: string;
   name: string;
-  recipe_ingredients: Array<{
-    product_id: string;
-    quantity: number;
-    unit: string;
-  }>;
+}
+
+export interface RecipeIngredientItem {
+  id: string;
+  recipe_id: string;
+  product_id: string;
+  quantity: number;
+  unit: string;
 }
 
 export default function Inventory() {
   const [products, setProducts] = useState<ProductStock[]>([]);
   const [orders, setOrders] = useState<OrderReq[]>([]);
   const [recipes, setRecipes] = useState<RecipeLink[]>([]);
+  const [recipeIngredients, setRecipeIngredients] = useState<RecipeIngredientItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  const [dateFilter, setDateFilter] = useState<"all" | "weekend" | "today" | "custom">("weekend");
+  const [dateFilter, setDateFilter] = useState<"all" | "weekend" | "today">("weekend");
   const [search, setSearch] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     void loadAllData();
@@ -53,19 +56,22 @@ export default function Inventory() {
     setError("");
 
     try {
-      const [prodRes, ordRes, recRes] = await Promise.all([
-        supabase.from("products").select("*").eq("active", true).order("name", { ascending: true }),
+      const [prodRes, ordRes, recRes, ingRes] = await Promise.all([
+        supabase.from("products").select("*").order("name", { ascending: true }),
         supabase.from("orders").select("id, cake_name, delivery_date, status").in("status", ["nowe", "w_trakcie"]).order("delivery_date", { ascending: true }),
-        supabase.from("recipes").select("id, name, recipe_ingredients(product_id, quantity, unit)").eq("active", true),
+        supabase.from("recipes").select("id, name"),
+        supabase.from("recipe_ingredients").select("id, recipe_id, product_id, quantity, unit"),
       ]);
 
       if (prodRes.error) throw prodRes.error;
       if (ordRes.error) throw ordRes.error;
       if (recRes.error) throw recRes.error;
+      if (ingRes.error) throw ingRes.error;
 
       setProducts((prodRes.data || []) as ProductStock[]);
       setOrders((ordRes.data || []) as OrderReq[]);
-      setRecipes((recRes.data || []) as any[]);
+      setRecipes((recRes.data || []) as RecipeLink[]);
+      setRecipeIngredients((ingRes.data || []) as RecipeIngredientItem[]);
     } catch (err: any) {
       setError(`Błąd wczytywania danych magazynu: ${err.message}`);
     } finally {
@@ -122,29 +128,29 @@ export default function Inventory() {
     return orders;
   }, [orders, dateFilter]);
 
-  // Obliczenie zapotrzebowania na każdy produkt ze znalezionych receptur
+  // Obliczenie zapotrzebowania na każdy produkt
   const requiredQuantities = useMemo(() => {
     const map: Record<string, number> = {};
 
     filteredOrders.forEach((ord) => {
-      // Szukanie pasującej receptury po zbliżonej nazwie
       const cleanOrdName = ord.cake_name.toLowerCase().trim();
       const matchedRecipe = recipes.find((r) => {
         const cleanRecName = r.name.toLowerCase().trim();
         return cleanOrdName.includes(cleanRecName) || cleanRecName.includes(cleanOrdName);
       });
 
-      if (matchedRecipe && matchedRecipe.recipe_ingredients) {
-        matchedRecipe.recipe_ingredients.forEach((ing) => {
+      if (matchedRecipe) {
+        const matchedIngs = recipeIngredients.filter((ing) => ing.recipe_id === matchedRecipe.id);
+        matchedIngs.forEach((ing) => {
           map[ing.product_id] = (map[ing.product_id] || 0) + Number(ing.quantity || 0);
         });
       }
     });
 
     return map;
-  }, [filteredOrders, recipes]);
+  }, [filteredOrders, recipes, recipeIngredients]);
 
-  // Lista bilansu magazynowego
+  // Raport magazynowy
   const inventoryReport = useMemo(() => {
     return products.map((prod) => {
       const stock = Number(prod.stock_quantity ?? 0);
@@ -368,7 +374,7 @@ export default function Inventory() {
           <div style={{ textAlign: "center", padding: 40, color: "#716b65" }}>Ładowanie magazynu...</div>
         ) : inventoryReport.length === 0 ? (
           <div style={{ textAlign: "center", padding: 40, border: "1px dashed #ddd3c9", borderRadius: 12, color: "#8a837d" }}>
-            Brak surowców w bazie. Dodaj produkty w zakładce „Produkty”.
+            Brak produktów w bazie. Dodaj produkty w zakładce „Produkty”.
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
