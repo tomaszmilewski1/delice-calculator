@@ -10,8 +10,6 @@ export interface Product {
   package_size: number;
   package_unit: string;
   package_price: number;
-  price_per_unit?: number;
-  yield_percent?: number;
   supplier?: string | null;
   notes?: string | null;
   created_at?: string;
@@ -43,13 +41,12 @@ export default function Products() {
   const [search, setSearch] = useState("");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  // Formularz
+  // Prosty formularz
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Nabiał");
   const [packageSize, setPackageSize] = useState<number | string>("");
   const [packageUnit, setPackageUnit] = useState("g");
   const [packagePrice, setPackagePrice] = useState<number | string>("");
-  const [yieldPercent, setYieldPercent] = useState<number | string>(100);
   const [supplier, setSupplier] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -72,7 +69,7 @@ export default function Products() {
       if (fetchErr) throw fetchErr;
       setProducts((data || []) as Product[]);
     } catch (err: any) {
-      setError(`Błąd wczytywania produktów: ${err.message}`);
+      setError(`Błąd wczytywania: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -85,7 +82,6 @@ export default function Products() {
     setPackageSize(p.package_size);
     setPackageUnit(p.package_unit || "g");
     setPackagePrice(p.package_price);
-    setYieldPercent(p.yield_percent ?? 100);
     setSupplier(p.supplier || "");
     setNotes(p.notes || "");
     setError("");
@@ -104,7 +100,6 @@ export default function Products() {
     setPackageSize("");
     setPackageUnit("g");
     setPackagePrice("");
-    setYieldPercent(100);
     setSupplier("");
     setNotes("");
   }
@@ -116,18 +111,17 @@ export default function Products() {
 
     const sizeNum = Number(String(packageSize).replace(",", "."));
     const priceNum = Number(String(packagePrice).replace(",", "."));
-    const yieldNum = Number(String(yieldPercent).replace(",", ".")) || 100;
 
     if (!name.trim()) {
-      setError("Podaj nazwę surowca / produktu.");
+      setError("Podaj nazwę surowca.");
       return;
     }
     if (!sizeNum || sizeNum <= 0) {
-      setError("Podaj prawidłową wielkość opakowania (większą od 0).");
+      setError("Podaj prawidłową wielkość opakowania.");
       return;
     }
     if (!priceNum || priceNum < 0) {
-      setError("Podaj prawidłową cenę opakowania.");
+      setError("Podaj prawidłową cenę.");
       return;
     }
 
@@ -139,7 +133,6 @@ export default function Products() {
         package_size: sizeNum,
         package_unit: packageUnit,
         package_price: priceNum,
-        yield_percent: yieldNum,
         supplier: supplier.trim() || null,
         notes: notes.trim() || null,
       };
@@ -151,42 +144,37 @@ export default function Products() {
           .eq("id", editingProduct.id);
 
         if (updateErr) throw updateErr;
-        setSuccess(`Zaktualizowano produkt: "${payload.name}"`);
+        setSuccess(`Zaktualizowano: "${payload.name}"`);
       } else {
         const { error: insertErr } = await supabase
           .from("products")
           .insert(payload);
 
         if (insertErr) throw insertErr;
-        setSuccess(`Dodano nowy produkt: "${payload.name}"`);
+        setSuccess(`Dodano: "${payload.name}"`);
       }
 
       setEditingProduct(null);
       resetForm();
       await loadProducts();
     } catch (err: any) {
-      setError(`Błąd zapisu produktu: ${err.message}`);
+      setError(`Błąd zapisu: ${err.message}`);
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(id: string, prodName: string) {
-    const confirmed = window.confirm(
-      `Czy na pewno chcesz bezpowrotnie usunąć produkt "${prodName}"?\n\nUwaga: Jeśli ten produkt jest używany w recepturach, zostanie z nich odpięty.`
-    );
-    if (!confirmed) return;
+    if (!window.confirm(`Czy na pewno chcesz usunąć "${prodName}"?`)) return;
 
     setDeletingId(id);
     setError("");
     setSuccess("");
 
     try {
-      // 1. Opcjonalne wyczyszczenie powiązań w recepturach jeśli istnieją
       await supabase.from("recipe_ingredients").delete().eq("product_id", id);
       await supabase.from("recipe_items").delete().eq("product_id", id);
 
-      // 2. Usunięcie samego produktu
       const { error: delErr } = await supabase
         .from("products")
         .delete()
@@ -194,13 +182,11 @@ export default function Products() {
 
       if (delErr) throw delErr;
 
-      setSuccess(`Produkt "${prodName}" został pomyślnie usunięty.`);
-      if (editingProduct?.id === id) {
-        handleCancelEdit();
-      }
+      setSuccess(`Usunięto "${prodName}"`);
+      if (editingProduct?.id === id) handleCancelEdit();
       await loadProducts();
     } catch (err: any) {
-      setError(`Nie udało się usunąć produktu: ${err.message}`);
+      setError(`Błąd usuwania: ${err.message}`);
     } finally {
       setDeletingId(null);
     }
@@ -256,7 +242,7 @@ export default function Products() {
           Katalog produktów
         </h2>
         <p style={{ margin: "6px 0 0", color: "#716b65" }}>
-          Zarządzaj cenami zakupu surowców, wielkościami opakowań i przelicznikami do receptur.
+          Baza surowców z aktualnymi cenami zakupu i przelicznikiem jednostkowym.
         </p>
       </div>
 
@@ -292,7 +278,7 @@ export default function Products() {
         </div>
       )}
 
-      {/* FORMULARZ PRODUKTU */}
+      {/* FORMULARZ */}
       <div style={{ ...cardStyle, marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>
@@ -362,7 +348,7 @@ export default function Products() {
             </label>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
               Wielkość opakowania *
               <input
@@ -378,7 +364,7 @@ export default function Products() {
             </label>
 
             <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
-              Jednostka opakowania
+              Jednostka
               <select
                 value={packageUnit}
                 onChange={(e) => setPackageUnit(e.target.value)}
@@ -393,21 +379,7 @@ export default function Products() {
             </label>
 
             <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
-              Wydajność / Uzysk (%)
-              <input
-                type="number"
-                step="1"
-                min="1"
-                max="100"
-                value={yieldPercent}
-                onChange={(e) => setYieldPercent(e.target.value)}
-                placeholder="100"
-                style={inputStyle}
-              />
-            </label>
-
-            <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
-              Dostawca / Sklep
+              Dostawca / Sklep (opcjonalnie)
               <input
                 type="text"
                 value={supplier}
@@ -419,12 +391,12 @@ export default function Products() {
           </div>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "#514b46" }}>
-            Notatka / uwagi
+            Notatka / uwagi (opcjonalnie)
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="np. Kupować wyłącznie w butelce, lepsza stabilność"
+              placeholder="np. Tylko w butelce"
               style={inputStyle}
             />
           </label>
@@ -511,7 +483,7 @@ export default function Products() {
               color: "#8a837d",
             }}
           >
-            Brak produktów w wybranej kategorii. Dodaj pierwszy surowiec powyżej!
+            Brak produktów w wybranej kategorii.
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
