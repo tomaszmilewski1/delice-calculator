@@ -154,7 +154,7 @@ export default function CakeCalculator() {
 
     try {
       const [recRes, prodRes, ingRes, accRes] = await Promise.all([
-        supabase.from("recipes").select("*").eq("active", true).order("name", { ascending: true }),
+        supabase.from("recipes").select("*").order("name", { ascending: true }),
         supabase.from("products").select("*").eq("active", true).order("name", { ascending: true }),
         supabase.from("recipe_ingredients").select("*"),
         supabase.from("accessories").select("*").order("name", { ascending: true }),
