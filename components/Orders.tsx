@@ -254,24 +254,27 @@ export default function Orders() {
     }
   }
 
-  // Generowanie tekstu wiadomości dla klienta
+  // Szablon wiadomości ze stopką Délice by Milewska - słodka doskonałość [facebook.com/DeliceByMilewska]
   function generateClientMessageText(order: Order): string {
     const remaining = Number(order.total_price || 0) - Number(order.advance_payment || 0);
     return `Dzień dobry ${order.client_name}! 🍰✨
 
-Potwierdzamy przyjęcie zamówienia w Pracowni Délice:
+Dziękujemy za złożenie zamówienia w pracowni Délice by Milewska - słodka doskonałość!
+
+Oto podsumowanie Twojego tortu:
 🎂 Tort: ${order.cake_name}
-📐 Rozmiar: ⌀${order.diameter_cm} cm (${order.portions} porcji)
+📐 Wymiary: ⌀${order.diameter_cm} cm (ok. ${order.portions} porcji)
 🗓 Termin odbioru: ${order.delivery_date}${order.delivery_time ? ` (godz. ${order.delivery_time})` : ""}
-${order.description ? `📌 Uwagi / dekoracja: ${order.description}\n` : ""}
-💰 Całkowity koszt: ${formatMoney(order.total_price)}
+${order.description ? `📌 Szczegóły / dekoracja: ${order.description}\n` : ""}
+💰 Całkowita wartość: ${formatMoney(order.total_price)}
 💵 Wpłacona zaliczka: ${formatMoney(order.advance_payment)}
 👉 Pozostało do dopłaty przy odbiorze: ${formatMoney(remaining)}
 
-📍 Adres odbioru pracowni: ul. Cukiernicza 12, Pracownia Délice
-📞 W razie pytań prosimy o kontakt: 600 700 800
+Będzie nam ogromnie miło, jeśli po uroczystości oznaczysz nas na zdjęciach! 📸✨
 
-Dziękujemy za zaufanie i do zobaczenia!`;
+Pozdrawiamy serdecznie,
+Délice by Milewska - słodka doskonałość
+[facebook.com/DeliceByMilewska]`;
   }
 
   function handleCopyMessage(order: Order) {
@@ -354,9 +357,9 @@ Dziękujemy za zaufanie i do zobaczenia!`;
         <div style={{ color: "#8a6d4b", fontSize: 11, fontWeight: 700, letterSpacing: 2 }}>
           HARMONOGRAM I ZAMÓWIENIA
         </div>
-        <h2 style={{ margin: "4px 0 0", fontSize: 28, color: "#292522" }}>Zamówienia</h2>
+        <h2 style={{ margin: "4px 0 0", fontSize: 28, color: "#292522" }}>Zamówienia — Délice by Milewska</h2>
         <p style={{ margin: "6px 0 0", color: "#716b65" }}>
-          Rejestruj zlecenia, generuj potwierdzenia dla klientów (WhatsApp/SMS) oraz drukuj etykiety na pudełka z alergenami.
+          Rejestruj zlecenia, generuj potwierdzenia dla klientów oraz drukuj etykiety z alergenami na pudełka.
         </p>
       </div>
 
@@ -650,7 +653,6 @@ Dziękujemy za zaufanie i do zobaczenia!`;
                     </div>
                   )}
 
-                  {/* PRZYCISKI AKCJI SPECJALNYCH DLA KLIENTA I ETYKIET */}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", background: "#ffffff", padding: "10px 12px", borderRadius: 10, border: "1px solid #eee7e0" }}>
                     <button
                       type="button"
@@ -764,7 +766,7 @@ Dziękujemy za zaufanie i do zobaczenia!`;
           <div
             style={{
               width: "100%",
-              maxWidth: 600,
+              maxWidth: 620,
               background: "#fff",
               borderRadius: 18,
               padding: 24,
@@ -773,7 +775,10 @@ Dziękujemy za zaufanie i do zobaczenia!`;
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>📱 Wiadomość dla klienta</h3>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, color: "#292522" }}>📱 Wiadomość dla klienta</h3>
+                <div style={{ fontSize: 12, color: "#8a6d4b", fontWeight: 700 }}>Délice by Milewska - słodka doskonałość</div>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedOrderForMessage(null)}
@@ -783,13 +788,9 @@ Dziękujemy za zaufanie i do zobaczenia!`;
               </button>
             </div>
 
-            <p style={{ fontSize: 13, color: "#716b65", margin: "0 0 12px" }}>
-              Skopiuj poniższy gotowy tekst lub kliknij, aby otworzyć bezpośrednio na WhatsApp:
-            </p>
-
             <textarea
               readOnly
-              rows={12}
+              rows={15}
               value={generateClientMessageText(selectedOrderForMessage)}
               style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12, resize: "none", background: "#fdfbf9", lineHeight: 1.5 }}
             />
@@ -847,7 +848,7 @@ Dziękujemy za zaufanie i do zobaczenia!`;
             id="printable-label"
             style={{
               width: "100%",
-              maxWidth: 500,
+              maxWidth: 520,
               background: "#ffffff",
               borderRadius: 16,
               padding: 26,
@@ -856,25 +857,30 @@ Dziękujemy za zaufanie i do zobaczenia!`;
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ textAlign: "center", borderBottom: "1px solid #eee7e0", paddingBottom: 14, marginBottom: 14 }}>
-              <div style={{ fontSize: 18, fontWeight: 900, color: "#8a6d4b", letterSpacing: 2 }}>DÉLICE</div>
-              <div style={{ fontSize: 10, color: "#716b65", textTransform: "uppercase" }}>Autorska Pracownia Tortów</div>
+            <div style={{ textAlign: "center", borderBottom: "1.5px solid #8a6d4b", paddingBottom: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 17, fontWeight: 900, color: "#8a6d4b", letterSpacing: 1.5 }}>
+                DÉLICE BY MILEWSKA
+              </div>
+              <div style={{ fontSize: 11, color: "#514b46", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>
+                SŁODKA DOSKONAŁOŚĆ
+              </div>
+              <div style={{ fontSize: 10, color: "#8a837d", marginTop: 2 }}>Autorska Pracownia Tortów Artystycznych</div>
             </div>
 
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 11, color: "#8a6d4b", fontWeight: 700 }}>TORT ARTYSTYCZNY DLA:</div>
               <div style={{ fontSize: 17, fontWeight: 800, color: "#292522" }}>{selectedOrderForLabel.client_name}</div>
               <div style={{ fontSize: 14, fontWeight: 600, color: "#514b46", marginTop: 2 }}>
-                Smak / Styl: {selectedOrderForLabel.cake_name}
+                Kompozycja smaków: {selectedOrderForLabel.cake_name}
               </div>
               <div style={{ fontSize: 12, color: "#716b65", marginTop: 2 }}>
-                Data wydania: <strong>{selectedOrderForLabel.delivery_date}</strong> (⌀{selectedOrderForLabel.diameter_cm}cm, {selectedOrderForLabel.portions}p)
+                Data wydania: <strong>{selectedOrderForLabel.delivery_date}</strong> (⌀{selectedOrderForLabel.diameter_cm} cm, ok. {selectedOrderForLabel.portions} porcji)
               </div>
             </div>
 
-            <div style={{ background: "#fffdfa", border: "1px solid #e9e2da", borderRadius: 8, padding: 10, marginBottom: 14, fontSize: 11, color: "#514b46" }}>
+            <div style={{ background: "#fffdfa", border: "1px solid #e9e2da", borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 11, color: "#514b46" }}>
               <strong style={{ color: "#b91c1c", display: "block", marginBottom: 3 }}>⚠️ INFORMACJA O ALERGENACH:</strong>
-              Produkt może zawierać: gluten, jaja, mleko i produkty pochodne (laktoza), orzechy, soję, żelatynę wieprzową.
+              Produkt może zawierać: gluten, jaja kurzęce, mleko i produkty pochodne (laktoza), orzechy, soję, żelatynę wieprzową.
             </div>
 
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 10, fontSize: 11, color: "#166534", lineHeight: 1.4 }}>
@@ -883,8 +889,12 @@ Dziękujemy za zaufanie i do zobaczenia!`;
                 <li>Przechowywać w lodówce w temp. 4–7°C w zamkniętym pudełku.</li>
                 <li>Wyjąć z lodówki na 20–30 minut przed podaniem (kremy uzyskają idealną aksamitność).</li>
                 <li>Kroić gorącym, suchym nożem zanurzanym we wrzątku.</li>
-                <li>Elementy dekoracyjne (topper, żywe kwiaty, wykałaczki) są niejadalne.</li>
+                <li>Elementy dekoracyjne (topper, żywe kwiaty, wsporniki) są niejadalne.</li>
               </ul>
+            </div>
+
+            <div style={{ textAlign: "center", marginTop: 14, paddingTop: 10, borderTop: "1px dashed #ddd3c9", fontSize: 11, color: "#8a6d4b", fontWeight: 600 }}>
+              fb.com/DeliceByMilewska • Oznacz nas na zdjęciach! ✨
             </div>
 
             <div className="delice-no-print" style={{ display: "flex", gap: 10, marginTop: 18 }}>
@@ -936,12 +946,15 @@ Dziękujemy za zaufanie i do zobaczenia!`;
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #8a6d4b", paddingBottom: 16, marginBottom: 20 }}>
               <div>
-                <div style={{ fontSize: 24, fontWeight: 900, color: "#8a6d4b", letterSpacing: 2 }}>DÉLICE</div>
-                <div style={{ fontSize: 11, color: "#716b65" }}>Autorska Pracownia Tortów i Ciast</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: "#8a6d4b", letterSpacing: 1.5 }}>
+                  DÉLICE BY MILEWSKA
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#514b46" }}>SŁODKA DOSKONAŁOŚĆ</div>
+                <div style={{ fontSize: 11, color: "#716b65" }}>Autorska Pracownia Tortów Artystycznych • fb.com/DeliceByMilewska</div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: "#292522" }}>KARTA ZAMÓWIENIA</div>
-                <div style={{ fontSize: 12, color: "#716b65" }}>Data: {selectedOrderForInvoice.delivery_date}</div>
+                <div style={{ fontSize: 12, color: "#716b65" }}>Data wydania: {selectedOrderForInvoice.delivery_date}</div>
               </div>
             </div>
 
@@ -973,7 +986,7 @@ Dziękujemy za zaufanie i do zobaczenia!`;
                 <tbody>
                   <tr style={{ borderBottom: "1px solid #eee7e0" }}>
                     <td style={{ padding: 12, fontWeight: 700 }}>{selectedOrderForInvoice.cake_name}</td>
-                    <td style={{ padding: 12 }}>⌀{selectedOrderForInvoice.diameter_cm} cm × {selectedOrderForInvoice.height_cm} cm ({selectedOrderForInvoice.portions}p)</td>
+                    <td style={{ padding: 12 }}>⌀{selectedOrderForInvoice.diameter_cm} cm × {selectedOrderForInvoice.height_cm} cm (ok. {selectedOrderForInvoice.portions} porcji)</td>
                     <td style={{ padding: 12, textAlign: "right", fontWeight: 800 }}>{formatMoney(selectedOrderForInvoice.total_price)}</td>
                   </tr>
                 </tbody>
@@ -982,14 +995,14 @@ Dziękujemy za zaufanie i do zobaczenia!`;
 
             {selectedOrderForInvoice.description && (
               <div style={{ background: "#fdfbf9", padding: 12, borderRadius: 8, border: "1px solid #eee7e0", fontSize: 12, marginBottom: 20 }}>
-                <strong>Uwagi do zamówienia / dekoracja:</strong> {selectedOrderForInvoice.description}
+                <strong>Szczegóły / uwagi do zamówienia:</strong> {selectedOrderForInvoice.description}
               </div>
             )}
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 24 }}>
-              <div style={{ width: 260, display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+              <div style={{ width: 270, display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Wartość zamówienia:</span>
+                  <span>Wartość całkowita:</span>
                   <strong>{formatMoney(selectedOrderForInvoice.total_price)}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#047857" }}>
@@ -997,7 +1010,7 @@ Dziękujemy za zaufanie i do zobaczenia!`;
                   <strong>{formatMoney(selectedOrderForInvoice.advance_payment)}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, borderTop: "2px solid #8a6d4b", paddingTop: 6, color: "#8a6d4b" }}>
-                  <span>Do zapłaty:</span>
+                  <span>Pozostało do zapłaty:</span>
                   <span>{formatMoney(Number(selectedOrderForInvoice.total_price || 0) - Number(selectedOrderForInvoice.advance_payment || 0))}</span>
                 </div>
               </div>
