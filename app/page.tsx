@@ -11,6 +11,7 @@ import Clients from "../components/Clients";
 import Costs from "../components/Costs";
 import Gallery from "../components/Gallery";
 import Accessories from "../components/Accessories";
+import Schedule from "../components/Schedule";
 
 type ActivePanel =
   | "dashboard"
@@ -21,7 +22,8 @@ type ActivePanel =
   | "clients"
   | "costs"
   | "gallery"
-  | "accessories";
+  | "accessories"
+  | "schedule";
 
 interface DashboardStats {
   activeOrdersCount: number;
@@ -218,6 +220,8 @@ export default function Home() {
         return <CakeCalculator />;
       case "orders":
         return <Orders />;
+      case "schedule":
+        return <Schedule />;
       case "clients":
         return <Clients />;
       case "costs":
@@ -450,6 +454,13 @@ export default function Home() {
               onClick={() => handleNavigate("orders")}
               icon="O"
               label="Zamówienia"
+            />
+
+            <NavButton
+              active={activePanel === "schedule"}
+              onClick={() => handleNavigate("schedule")}
+              icon="🗓"
+              label="Harmonogram pracowni"
             />
 
             <NavButton
@@ -756,6 +767,8 @@ function getPanelTitle(panel: ActivePanel) {
       return "Receptury";
     case "orders":
       return "Zamówienia";
+    case "schedule":
+      return "Harmonogram pracowni";
     case "clients":
       return "Klienci";
     case "costs":
