@@ -12,11 +12,13 @@ import Costs from "../components/Costs";
 import Gallery from "../components/Gallery";
 import Accessories from "../components/Accessories";
 import Schedule from "../components/Schedule";
+import Inventory from "../components/Inventory";
 
 type ActivePanel =
   | "dashboard"
   | "new-cake"
   | "products"
+  | "inventory"
   | "recipes"
   | "orders"
   | "clients"
@@ -214,6 +216,8 @@ export default function Home() {
     switch (activePanel) {
       case "products":
         return <Products />;
+      case "inventory":
+        return <Inventory />;
       case "recipes":
         return <Recipes />;
       case "new-cake":
@@ -438,6 +442,13 @@ export default function Home() {
               onClick={() => handleNavigate("products")}
               icon="P"
               label="Produkty"
+            />
+
+            <NavButton
+              active={activePanel === "inventory"}
+              onClick={() => handleNavigate("inventory")}
+              icon="📦"
+              label="Magazyn i Zakupy"
             />
 
             <NavButton
@@ -761,6 +772,8 @@ function getPanelTitle(panel: ActivePanel) {
       return "Nowy tort";
     case "products":
       return "Produkty";
+    case "inventory":
+      return "Magazyn spożywczy i lista zakupów";
     case "accessories":
       return "Dodatki niespożywcze i opakowania";
     case "recipes":
