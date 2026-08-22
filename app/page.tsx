@@ -10,6 +10,7 @@ import Orders from "../components/Orders";
 import Clients from "../components/Clients";
 import Costs from "../components/Costs";
 import Gallery from "../components/Gallery";
+import Accessories from "../components/Accessories";
 
 type ActivePanel =
   | "dashboard"
@@ -19,7 +20,8 @@ type ActivePanel =
   | "orders"
   | "clients"
   | "costs"
-  | "gallery";
+  | "gallery"
+  | "accessories";
 
 interface DashboardStats {
   activeOrdersCount: number;
@@ -222,6 +224,8 @@ export default function Home() {
         return <Costs />;
       case "gallery":
         return <Gallery />;
+      case "accessories":
+        return <Accessories />;
       case "dashboard":
       default:
         return (
@@ -430,6 +434,13 @@ export default function Home() {
               onClick={() => handleNavigate("products")}
               icon="P"
               label="Produkty"
+            />
+
+            <NavButton
+              active={activePanel === "accessories"}
+              onClick={() => handleNavigate("accessories")}
+              icon="🎀"
+              label="Dodatki i opakowania"
             />
 
             <div style={navSectionStyle}>ZARZĄDZANIE</div>
@@ -739,6 +750,8 @@ function getPanelTitle(panel: ActivePanel) {
       return "Nowy tort";
     case "products":
       return "Produkty";
+    case "accessories":
+      return "Dodatki niespożywcze i opakowania";
     case "recipes":
       return "Receptury";
     case "orders":
