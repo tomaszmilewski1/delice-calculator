@@ -13,7 +13,7 @@ export interface ScheduleOrder {
   portions: number;
   delivery_date: string;
   delivery_time?: string | null;
-  notes: string | null;
+  description: string | null;
   status: string;
 }
 
@@ -32,6 +32,14 @@ interface TaskItem {
   isPast: boolean;
 }
 
+// Bezpieczne formatowanie lokalnej daty YYYY-MM-DD bez przesunięć strefy UTC
+function formatLocalDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function Schedule() {
   const [orders, setOrders] = useState<ScheduleOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +49,6 @@ export default function Schedule() {
 
   useEffect(() => {
     void loadOrders();
-    // Odczyt zapamiętanych odhaczeń z localStorage
     try {
       const saved = localStorage.getItem("delice_completed_schedule_tasks");
       if (saved) setCompletedTasks(JSON.parse(saved));
@@ -77,16 +84,19 @@ export default function Schedule() {
     });
   }
 
-  // Generowanie zadań na osi czasu dla każdego tortu
   const tasks = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayStr = formatLocalDate(today);
 
     const generated: TaskItem[] = [];
 
     orders.forEach((o) => {
       if (!o.delivery_date) return;
-      const delivDate = new Date(o.delivery_date);
+      
+      // Parsowanie delivery_date YYYY-MM-DD
+      const [year, month, day] = o.delivery_date.split("-").map(Number);
+      const delivDate = new Date(year, month - 1, day);
       delivDate.setHours(0, 0, 0, 0);
 
       // D-2: Pieczenie i wkładki
@@ -106,8 +116,8 @@ export default function Schedule() {
         dateObj: Date,
         title: string
       ): TaskItem => {
-        const dateStr = dateObj.toISOString().slice(0, 10);
-        const isToday = dateObj.getTime() === today.getTime();
+        const dateStr = formatLocalDate(dateObj);
+        const isToday = dateStr === todayStr;
         const isPast = dateObj.getTime() < today.getTime();
         const id = `${o.id}_${stage}_${dateStr}`;
 
@@ -121,7 +131,7 @@ export default function Schedule() {
           client: o.client_name,
           phone: o.client_phone,
           details: `${o.cake_name} (⌀${o.diameter_cm}cm, ${o.portions}p)`,
-          notes: o.notes,
+          notes: o.description,
           isToday,
           isPast,
         };
@@ -137,15 +147,14 @@ export default function Schedule() {
     return generated.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
   }, [orders]);
 
-  // Filtrowanie zadań
   const filteredTasks = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().slice(0, 10);
+    const todayStr = formatLocalDate(today);
 
     const tmrw = new Date(today);
     tmrw.setDate(tmrw.getDate() + 1);
-    const tmrwStr = tmrw.toISOString().slice(0, 10);
+    const tmrwStr = formatLocalDate(tmrw);
 
     if (selectedDayFilter === "today") {
       return tasks.filter((t) => t.dateStr === todayStr);
@@ -154,16 +163,22 @@ export default function Schedule() {
       return tasks.filter((t) => t.dateStr === tmrwStr);
     }
     if (selectedDayFilter === "weekend") {
-      // Zadania na najbliższy piątek, sobotę i niedzielę
-      const dayOfWeek = today.getDay();
-      const distToFri = (5 - dayOfWeek + 7) % 7;
-      const fri = new Date(today);
-      fri.setDate(fri.getDate() + distToFri);
+      // Jeśli dzisiaj jest piątek, sobota lub niedziela - bierzemy ten weekend
+      const dayOfWeek = today.getDay(); // 0: Nd, 5: Pt, 6: Sob
+      let fri = new Date(today);
+      if (dayOfWeek === 5) fri = new Date(today);
+      else if (dayOfWeek === 6) fri.setDate(today.getDate() - 1);
+      else if (dayOfWeek === 0) fri.setDate(today.getDate() - 2);
+      else {
+        const distToFri = 5 - dayOfWeek;
+        fri.setDate(today.getDate() + distToFri);
+      }
+
       const sun = new Date(fri);
       sun.setDate(sun.getDate() + 2);
 
-      const friStr = fri.toISOString().slice(0, 10);
-      const sunStr = sun.toISOString().slice(0, 10);
+      const friStr = formatLocalDate(fri);
+      const sunStr = formatLocalDate(sun);
 
       return tasks.filter((t) => t.dateStr >= friStr && t.dateStr <= sunStr);
     }
@@ -171,7 +186,6 @@ export default function Schedule() {
     return tasks;
   }, [tasks, selectedDayFilter]);
 
-  // Grupowanie zadań po dacie
   const groupedTasks = useMemo(() => {
     const groups: Record<string, TaskItem[]> = {};
     filteredTasks.forEach((t) => {
@@ -184,15 +198,16 @@ export default function Schedule() {
   function formatDisplayDate(dateStr: string) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().slice(0, 10);
+    const todayStr = formatLocalDate(today);
 
     const tmrw = new Date(today);
     tmrw.setDate(tmrw.getDate() + 1);
-    const tmrwStr = tmrw.toISOString().slice(0, 10);
+    const tmrwStr = formatLocalDate(tmrw);
 
-    const d = new Date(dateStr);
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const dateObj = new Date(y, m - 1, d);
     const dayNames = ["Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"];
-    const dayName = dayNames[d.getDay()];
+    const dayName = dayNames[dateObj.getDay()];
 
     if (dateStr === todayStr) return `🌟 DZISIAJ (${dayName}, ${dateStr})`;
     if (dateStr === tmrwStr) return `JUTRO (${dayName}, ${dateStr})`;
@@ -307,7 +322,7 @@ export default function Schedule() {
                 color: selectedDayFilter === "weekend" ? "#ffffff" : "#716b65",
               }}
             >
-              Najbliższy weekend (Pt-Nd)
+              Weekend (Pt-Nd)
             </button>
           </div>
 
@@ -386,7 +401,7 @@ export default function Schedule() {
                           <input
                             type="checkbox"
                             checked={done}
-                            onChange={() => {}} // obsłużone w div onClick
+                            onChange={() => {}}
                             style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#8a6d4b" }}
                           />
 
